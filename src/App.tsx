@@ -12,7 +12,7 @@ const firebaseConfig = {
   authDomain: "study-tracker-803a2.firebaseapp.com",
   projectId: "study-tracker-803a2"
 };
-
+ 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
