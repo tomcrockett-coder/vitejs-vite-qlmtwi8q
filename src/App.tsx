@@ -424,6 +424,19 @@ export default function App() {
   const uploadTargetId = selectedStudentId || (user ? user.uid : null);
   const displayPhoto = selectedStudentId ? studentPhoto : myPhoto;
 
+  // INITIALS GENERATION LOGIC
+  const getInitials = (name) => {
+    if (!name || typeof name !== 'string') return "??";
+    const parts = name.trim().split(' ').filter(Boolean);
+    if (parts.length === 0) return "??";
+    if (parts.length === 1) return parts[0].substring(0, 2).toUpperCase();
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  };
+
+  const targetName = selectedStudentId 
+    ? studentsList.find(s => s.id === selectedStudentId)?.name 
+    : user?.displayName || user?.email;
+
   // --- DATA EXPORT LOGIC ---
   const exportToCSV = (data, fileName) => {
     if (!data || data.length === 0) return;
@@ -606,7 +619,7 @@ export default function App() {
 
           {uploadTargetId && (
             <div className="relative w-11 h-11 rounded-full border-2 border-black overflow-hidden group cursor-pointer shrink-0 ml-2 shadow-sm bg-white">
-              <img src={displayPhoto || `https://api.dicebear.com/7.x/initials/svg?seed=${uploadTargetId}&backgroundColor=b6e3f4`} alt="Profile" className="w-full h-full object-cover" />
+              <img src={displayPhoto || `https://api.dicebear.com/7.x/initials/svg?seed=${getInitials(targetName)}&backgroundColor=b6e3f4`} alt="Profile" className="w-full h-full object-cover" />
               <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                 <Camera size={16} className="text-white" />
               </div>
