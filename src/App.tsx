@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Activity, CheckCircle2, Circle, Send, Calendar, LogOut, Edit3, Zap, Sparkles, Flame, Shield, Loader2, Eye, EyeOff, Settings, Trash2, Users, Camera, Download, Palette } from 'lucide-react';
+import { Activity, CheckCircle2, Circle, Send, Calendar, LogOut, Edit3, Zap, Sparkles, Flame, Shield, Loader2, Eye, EyeOff, Settings, Trash2, Users, Camera, Download, Palette, Moon, Sun, User } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInWithPopup, signInWithRedirect, GoogleAuthProvider, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, collection, doc, setDoc, getDoc, onSnapshot, getDocs, deleteDoc } from 'firebase/firestore';
@@ -66,22 +66,22 @@ const playPowerup = () => playSound('powerup', 0.5, 1.0);
 const THEMES = {
   burgundy: {
     id: 'burgundy', name: 'Classic Burgundy',
-    primary: 'bg-[#8B1D3B]', hover: 'hover:bg-[#6A152C]', text: 'text-[#8B1D3B]', hoverText: 'hover:text-[#6A152C]',
+    primary: 'bg-[#8B1D3B]', hover: 'hover:bg-[#6A152C]', text: 'text-[#8B1D3B]', textDark: 'text-rose-400',
     border: 'border-[#8B1D3B]', borderDark: 'border-[#6A152C]', hex: '#8B1D3B', imageFilter: 'none'
   },
   navy: {
     id: 'navy', name: 'Midnight Navy',
-    primary: 'bg-[#1E3A8A]', hover: 'hover:bg-[#172554]', text: 'text-[#1E3A8A]', hoverText: 'hover:text-[#172554]',
+    primary: 'bg-[#1E3A8A]', hover: 'hover:bg-[#172554]', text: 'text-[#1E3A8A]', textDark: 'text-blue-400',
     border: 'border-[#1E3A8A]', borderDark: 'border-[#172554]', hex: '#1E3A8A', imageFilter: 'hue-rotate(-120deg) brightness(0.9) saturate(1.2)'
   },
   forest: {
     id: 'forest', name: 'Evergreen',
-    primary: 'bg-[#064E3B]', hover: 'hover:bg-[#022C22]', text: 'text-[#064E3B]', hoverText: 'hover:text-[#022C22]',
+    primary: 'bg-[#064E3B]', hover: 'hover:bg-[#022C22]', text: 'text-[#064E3B]', textDark: 'text-emerald-400',
     border: 'border-[#064E3B]', borderDark: 'border-[#022C22]', hex: '#064E3B', imageFilter: 'hue-rotate(170deg) brightness(0.8) saturate(1.1)'
   },
   plum: {
     id: 'plum', name: 'Royal Plum',
-    primary: 'bg-[#4C1D95]', hover: 'hover:bg-[#2E1065]', text: 'text-[#4C1D95]', hoverText: 'hover:text-[#2E1065]',
+    primary: 'bg-[#4C1D95]', hover: 'hover:bg-[#2E1065]', text: 'text-[#4C1D95]', textDark: 'text-purple-400',
     border: 'border-[#4C1D95]', borderDark: 'border-[#2E1065]', hex: '#4C1D95', imageFilter: 'hue-rotate(-60deg) saturate(1.3)'
   }
 };
@@ -101,6 +101,7 @@ export default function App() {
   const [viewAsStudent, setViewAsStudent] = useState(false);
   const [fireworksActive, setFireworksActive] = useState(false);
   const [showThemeMenu, setShowThemeMenu] = useState(false);
+  const [isDarkMode, setIsDarkMode] = useState(false);
 
   // Photo & Theme State
   const [myPhoto, setMyPhoto] = useState(null);
@@ -139,6 +140,18 @@ export default function App() {
   const activeSubjects = subjects.filter(s => s.trim() !== '');
   const currentTheme = THEMES[userThemeId] || THEMES.burgundy;
 
+  // --- STYLING VARIABLES ---
+  const isDark = isDarkMode;
+  const bgPanel = isDark ? 'bg-slate-800' : 'bg-slate-200';
+  const bgCard = isDark ? 'bg-slate-900' : 'bg-white';
+  const bgInput = isDark ? 'bg-slate-800' : 'bg-gray-50';
+  const textMain = isDark ? 'text-slate-100' : 'text-gray-900';
+  const textMuted = isDark ? 'text-slate-400' : 'text-gray-500';
+  const borderMain = isDark ? 'border-slate-600' : 'border-black';
+  const borderLight = isDark ? 'border-slate-700' : 'border-gray-200';
+  const hoverCard = isDark ? 'hover:bg-slate-800' : 'hover:bg-gray-50';
+  const themeText = isDark ? currentTheme.textDark : currentTheme.text;
+
   // --- AUTHENTICATION & SYNC LOGIC ---
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
@@ -146,6 +159,13 @@ export default function App() {
         if (currentUser.email.toLowerCase() === ADMIN_EMAIL.toLowerCase()) {
           setUserRole('admin');
           setUser(currentUser);
+          
+          await setDoc(doc(db, 'users', currentUser.uid), {
+            name: currentUser.displayName || 'Admin',
+            email: currentUser.email,
+            role: 'admin'
+          }, { merge: true });
+          
           await loadTeacherData(currentUser);
         } else {
           const allowedDocRef = doc(db, 'allowed_users', currentUser.email.toLowerCase());
@@ -155,6 +175,13 @@ export default function App() {
             const role = allowedDoc.data().role || 'student';
             setUserRole(role);
             setUser(currentUser);
+            
+            await setDoc(doc(db, 'users', currentUser.uid), {
+              name: currentUser.displayName || currentUser.email,
+              email: currentUser.email,
+              role: role
+            }, { merge: true });
+
             if (role === 'student') setSelectedStudentId(currentUser.uid);
             else await loadTeacherData(currentUser);
           } else {
@@ -167,6 +194,7 @@ export default function App() {
             if(snap.exists()) {
               if (snap.data().photoURL) setMyPhoto(snap.data().photoURL);
               if (snap.data().theme) setUserThemeId(snap.data().theme);
+              if (snap.data().darkMode !== undefined) setIsDarkMode(snap.data().darkMode);
             } else {
               setMyPhoto(currentUser.photoURL);
             }
@@ -181,15 +209,28 @@ export default function App() {
   }, []);
 
   const loadTeacherData = async (currentUser) => {
-    const usersSnap = await getDocs(collection(db, 'users'));
-    const fetchedStudents = [];
-    usersSnap.forEach(d => {
-      const data = d.data();
-      if (data.role === 'student' || (!data.role && data.email.toLowerCase() !== ADMIN_EMAIL.toLowerCase())) {
-        fetchedStudents.push({ id: d.id, ...data });
-      }
-    });
-    setStudentsList(fetchedStudents);
+    try {
+      const usersSnap = await getDocs(collection(db, 'users'));
+      const fetchedStudents = [];
+      
+      usersSnap.forEach(d => {
+        const data = d.data();
+        const userEmail = data.email ? data.email.toLowerCase() : '';
+        const adminEmailStr = ADMIN_EMAIL.toLowerCase();
+        
+        if (data.role === 'student' || (!data.role && userEmail && userEmail !== adminEmailStr)) {
+          fetchedStudents.push({ 
+            id: d.id, 
+            name: data.name || data.email || 'Unnamed Student',
+            ...data 
+          });
+        }
+      });
+      
+      setStudentsList(fetchedStudents);
+    } catch (error) {
+      console.error("Error loading students list:", error);
+    }
   };
 
   const fetchAllowedUsers = async () => {
@@ -287,6 +328,14 @@ export default function App() {
   const researchUnlocked = isEffectivelyStaff || (healthScore >= startingScore + 10);
 
   // --- ACTIONS ---
+  const toggleDarkMode = async () => {
+    const newVal = !isDarkMode;
+    setIsDarkMode(newVal);
+    if (user) {
+      await setDoc(doc(db, 'users', user.uid), { darkMode: newVal }, { merge: true });
+    }
+  };
+
   const changeTheme = async (newThemeId) => {
     setUserThemeId(newThemeId);
     setShowThemeMenu(false);
@@ -424,19 +473,6 @@ export default function App() {
   const uploadTargetId = selectedStudentId || (user ? user.uid : null);
   const displayPhoto = selectedStudentId ? studentPhoto : myPhoto;
 
-  // INITIALS GENERATION LOGIC
-  const getInitials = (name) => {
-    if (!name || typeof name !== 'string') return "??";
-    const parts = name.trim().split(' ').filter(Boolean);
-    if (parts.length === 0) return "??";
-    if (parts.length === 1) return parts[0].substring(0, 2).toUpperCase();
-    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-  };
-
-  const targetName = selectedStudentId 
-    ? studentsList.find(s => s.id === selectedStudentId)?.name 
-    : user?.displayName || user?.email;
-
   // --- DATA EXPORT LOGIC ---
   const exportToCSV = (data, fileName) => {
     if (!data || data.length === 0) return;
@@ -493,19 +529,19 @@ export default function App() {
   // --- THE FINAL LOGO COMPONENT ---
   const RVALogo = ({ large, theme, centered }) => {
     return (
-      <div className={`flex items-center ${centered ? 'relative right-4 md:right-6' : ''}`}>
-        <div className={`flex items-center justify-center shrink-0 relative z-0 ${large ? 'w-24 h-24 md:w-32 md:h-32 mr-2 md:mr-1' : 'w-16 h-16 md:w-20 md:h-20 mr-3 md:mr-2'}`}>
+      <div className={`flex items-center ${centered ? 'relative right-2 md:right-4' : ''}`}>
+        <div className={`flex items-center justify-center shrink-0 relative z-0 ${large ? 'w-12 h-12 md:w-16 md:h-16 mr-2' : 'w-8 h-8 md:w-10 md:h-10 mr-2 md:mr-1.5'}`}>
           <img 
             src="image.png" 
             alt="Equip" 
             className="w-full h-full object-contain scale-[1.7] transition-all duration-700 drop-shadow-sm" 
-            style={{ filter: theme.imageFilter }}
+            style={{ filter: `${theme.imageFilter} ${isDark ? 'brightness(1.5)' : ''}`.trim() }}
           />
         </div>
         
         <div className="flex flex-col items-start justify-center cursor-default relative z-10 drop-shadow-sm">
-          <div className={`${large ? 'text-5xl md:text-6xl' : 'text-3xl md:text-4xl'} font-black leading-none tracking-tighter text-gray-900 transition-colors duration-500`}>Equip</div>
-          <div className={`${large ? 'text-[10px] mt-2 pt-1.5' : 'text-[8px] md:text-[9px] mt-1.5 pt-1'} font-black ${theme.text} tracking-[0.2em] uppercase opacity-90 border-t w-full transition-colors duration-500`} style={{ borderColor: theme.hex + '33' }}>
+          <div className={`${large ? 'text-3xl md:text-4xl' : 'text-xl md:text-2xl'} font-black leading-none tracking-tighter ${textMain} transition-colors duration-500`}>Equip</div>
+          <div className={`${large ? 'text-[7px] mt-1 pt-0.5' : 'text-[6px] md:text-[7px] mt-1 pt-0.5'} font-black ${themeText} tracking-[0.2em] uppercase opacity-90 border-t w-full transition-colors duration-500`} style={{ borderColor: currentTheme.hex + '33' }}>
             <span className="typewriter inline-block">By Rural Virtual Academy</span>
           </div>
         </div>
@@ -513,8 +549,8 @@ export default function App() {
     );
   };
 
-  const getHealthColor = (s) => s >= 85 ? 'text-[#2D6A4F]' : s >= 70 ? 'text-amber-500' : 'text-red-500';
-  const getHealthBg = (s) => s >= 85 ? 'bg-[#2D6A4F]' : s >= 70 ? 'bg-amber-500' : 'bg-red-500';
+  const getHealthColor = (s) => s >= 85 ? (isDark ? 'text-emerald-400' : 'text-[#2D6A4F]') : s >= 70 ? 'text-amber-500' : 'text-red-500';
+  const getHealthBg = (s) => s >= 85 ? (isDark ? 'bg-emerald-600' : 'bg-[#2D6A4F]') : s >= 70 ? 'bg-amber-500' : 'bg-red-500';
 
   // --- LOGIN SCREEN ---
   if (!user) {
@@ -522,12 +558,17 @@ export default function App() {
       <div className="min-h-screen animated-gradient-bg flex items-center justify-center p-4">
         <style>
           {`
+            :root {
+              --bg-grad-top: ${isDark ? '#020617' : '#ffffff'};
+              --bg-grad-mid: ${isDark ? '#1e293b' : '#f8fafc'};
+              --bg-grad-bot: ${isDark ? '#0f172a' : '#cbd5e1'};
+            }
             @keyframes bgFadeInUp {
               0% { background-position: 50% 100%; }
               100% { background-position: 50% 0%; }
             }
             .animated-gradient-bg {
-              background: linear-gradient(to top, #cbd5e1 0%, #f8fafc 40%, #ffffff 100%);
+              background: linear-gradient(to top, var(--bg-grad-bot) 0%, var(--bg-grad-mid) 40%, var(--bg-grad-top) 100%);
               background-size: 100% 250%;
               animation: bgFadeInUp 2s ease-out forwards;
             }
@@ -545,12 +586,12 @@ export default function App() {
           `}
         </style>
         <div className="max-w-md w-full flex flex-col items-center text-center">
-          <div className="flex justify-center mb-10">
+          <div className="flex justify-center mb-8">
             <RVALogo large={true} theme={currentTheme} centered={true} />
           </div>
-          <p className="text-gray-500 mb-8 font-medium">Sign in with your Google account to access your dashboard.</p>
-          <button onClick={() => handleLogin()} disabled={isLoggingIn} className={`w-full py-4 rounded-2xl ${currentTheme.primary} ${currentTheme.hover} text-white font-bold text-lg transition-all flex items-center justify-center gap-3 shadow-lg border-2 border-black border-b-[6px] active:border-b-2 active:translate-y-[4px] disabled:opacity-50`}>
-            {isLoggingIn ? <Loader2 className="animate-spin" /> : "Sign in with Google"}
+          <p className={`${textMuted} mb-6 text-sm font-medium`}>Sign in with your Google account to access your dashboard.</p>
+          <button onClick={() => handleLogin()} disabled={isLoggingIn} className={`w-full py-3 rounded-xl ${currentTheme.primary} ${currentTheme.hover} text-white font-bold text-base transition-all flex items-center justify-center gap-2 shadow-md border-2 ${borderMain} border-b-[4px] active:border-b-2 active:translate-y-[2px] disabled:opacity-50`}>
+            {isLoggingIn ? <Loader2 className="animate-spin size-5" /> : "Sign in with Google"}
           </button>
         </div>
       </div>
@@ -559,16 +600,21 @@ export default function App() {
 
   // --- MAIN DASHBOARD SCREEN ---
   return (
-    <div className="min-h-screen animated-gradient-bg p-4 md:p-8 font-sans text-gray-800 flex flex-col items-center transition-colors duration-500">
+    <div className={`min-h-screen animated-gradient-bg p-2 md:p-4 font-sans ${textMain} flex flex-col items-center transition-colors duration-500`}>
       
       <style>
         {`
+          :root {
+            --bg-grad-top: ${isDark ? '#020617' : '#ffffff'};
+            --bg-grad-mid: ${isDark ? '#1e293b' : '#f8fafc'};
+            --bg-grad-bot: ${isDark ? '#0f172a' : '#cbd5e1'};
+          }
           @keyframes bgFadeInUp {
             0% { background-position: 50% 100%; }
             100% { background-position: 50% 0%; }
           }
           .animated-gradient-bg {
-            background: linear-gradient(to top, #cbd5e1 0%, #f8fafc 40%, #ffffff 100%);
+            background: linear-gradient(to top, var(--bg-grad-bot) 0%, var(--bg-grad-mid) 40%, var(--bg-grad-top) 100%);
             background-size: 100% 250%;
             animation: bgFadeInUp 2s ease-out forwards;
           }
@@ -586,22 +632,61 @@ export default function App() {
         `}
       </style>
 
-      {/* Top Navigation Bar */}
-      <div className={`w-full max-w-6xl bg-slate-200 rounded-2xl md:rounded-full px-8 py-5 md:py-4 shadow-sm border-[3px] ${currentTheme.border} mb-2 flex flex-col md:flex-row justify-between items-center gap-4 transition-colors duration-500`}>
-        <RVALogo large={false} theme={currentTheme} />
+      {/* TOP NAVIGATION BAR WITH CENTERED HEALTH STATS */}
+      <div className={`w-full max-w-6xl ${bgPanel} rounded-3xl md:rounded-full px-5 md:px-6 py-2.5 md:py-3 shadow-sm border-[3px] ${currentTheme.border} mb-4 flex flex-col lg:flex-row justify-between items-center gap-4 transition-colors duration-500`}>
         
-        <div className="flex items-center gap-3 flex-wrap justify-center">
+        {/* LEFT: Logo Component */}
+        <div className="flex justify-center lg:justify-start lg:flex-1 shrink-0 w-full lg:w-auto">
+          <RVALogo large={false} theme={currentTheme} />
+        </div>
+        
+        {/* CENTER: Academic Health Stats */}
+        {selectedStudentId && !showAdminPanel && !showSettings && (
+          <div className={`flex items-center justify-center gap-4 md:gap-8 lg:flex-shrink-0 w-full lg:w-auto ${isDark ? 'bg-black/20' : 'bg-white/40'} lg:bg-transparent rounded-2xl lg:rounded-none py-2 lg:py-0 border-2 border-black/5 lg:border-transparent`}>
+            
+            <div className={`flex items-center gap-1.5 text-orange-500 font-black uppercase text-[10px] tracking-widest ${bgCard} px-3 py-1.5 rounded-full border-2 ${borderMain} shadow-sm`}>
+              <Flame size={14} fill="currentColor" /> {currentStreak} Day Streak
+            </div>
+            
+            <div className="flex items-center gap-2">
+              <div className="relative flex items-center justify-center w-10 h-10 font-black text-sm">
+                <svg className="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
+                  <circle cx="50" cy="50" r="45" fill="none" stroke={isDark ? "#334155" : "#d1d5db"} strokeWidth="10" />
+                  <circle cx="50" cy="50" r="45" fill="none" stroke="currentColor" strokeWidth="10" strokeDasharray="283" strokeDashoffset={283 * (1 - todayScore/100)} className={`${getHealthColor(todayScore)} transition-all duration-1000`} strokeLinecap="round" />
+                </svg>
+                <div className="absolute">{todayScore}</div>
+              </div>
+              <span className={`text-[10px] font-black uppercase ${textMuted} tracking-widest hidden md:block`}>Today</span>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <div className="relative flex items-center justify-center w-12 h-12 font-black text-base">
+                <svg className="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
+                  <circle cx="50" cy="50" r="45" fill="none" stroke={isDark ? "#334155" : "#d1d5db"} strokeWidth="10" />
+                  <circle cx="50" cy="50" r="45" fill="none" stroke="currentColor" strokeWidth="10" strokeDasharray="283" strokeDashoffset={283 * (1 - Math.min(healthScore, 100)/100)} className={`${getHealthColor(healthScore)} transition-all duration-1000`} strokeLinecap="round" />
+                </svg>
+                <div className="absolute">{healthScore}</div>
+                {fireworksActive && <Sparkles size={24} className="absolute text-yellow-500 animate-bounce" />}
+              </div>
+              <span className={`text-[10px] font-black uppercase ${textMuted} tracking-widest hidden md:block`}>Overall</span>
+            </div>
+            
+          </div>
+        )}
+        
+        {/* RIGHT: Action Icons and User Controls */}
+        <div className="flex items-center gap-2 flex-wrap justify-center lg:justify-end lg:flex-1 w-full lg:w-auto">
           {isStaff && selectedStudentId && !showAdminPanel && (
             <button 
               onClick={() => { setViewAsStudent(!viewAsStudent); setShowSettings(false); }} 
-              className={`flex items-center gap-2 text-sm font-bold px-4 py-2.5 rounded-full transition-all border-2 border-black ${viewAsStudent ? 'bg-amber-100 text-amber-800' : 'bg-white text-gray-700 hover:bg-gray-50'}`}>
-              {viewAsStudent ? <EyeOff size={16} /> : <Eye size={16} />} 
+              className={`flex items-center gap-1.5 text-xs font-bold px-3 py-2 rounded-full transition-all border-2 ${borderMain} ${viewAsStudent ? (isDark ? 'bg-amber-900/50 text-amber-300' : 'bg-amber-100 text-amber-800') : `${bgCard} ${textMain} ${hoverCard}`}`}>
+              {viewAsStudent ? <EyeOff size={14} /> : <Eye size={14} />} 
               <span className="hidden md:inline">{viewAsStudent ? 'Exit Student View' : 'View as Student'}</span>
             </button>
           )}
           
           {isStaff && !showAdminPanel && (
-            <select className={`p-2.5 bg-white border-2 border-black rounded-xl text-sm font-bold text-gray-700 outline-none focus:${currentTheme.border} transition-colors`} value={selectedStudentId || ''} onChange={(e) => { setSelectedStudentId(e.target.value); setViewAsStudent(false); setShowSettings(false); }}>
+            <select className={`p-2 ${bgCard} border-2 ${borderMain} rounded-xl text-xs font-bold ${textMain} outline-none focus:${currentTheme.border} transition-colors`} value={selectedStudentId || ''} onChange={(e) => { setSelectedStudentId(e.target.value); setViewAsStudent(false); setShowSettings(false); }}>
               <option value="">-- Select Student --</option>
               {studentsList.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
@@ -610,34 +695,43 @@ export default function App() {
           {userRole === 'admin' && (
             <button 
               onClick={() => { setShowAdminPanel(!showAdminPanel); setSelectedStudentId(null); setShowSettings(false); }} 
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-full border-2 border-black transition-colors font-bold text-sm ${showAdminPanel ? 'bg-blue-100 text-blue-700' : 'bg-white text-gray-700 hover:bg-gray-50'}`} 
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-full border-2 ${borderMain} transition-colors font-bold text-xs ${showAdminPanel ? (isDark ? 'bg-blue-900/50 text-blue-300' : 'bg-blue-100 text-blue-700') : `${bgCard} ${textMain} ${hoverCard}`}`} 
               title="Admin Settings">
-              <Shield size={16} />
+              <Shield size={14} />
               <span className="hidden md:inline">{showAdminPanel ? 'Exit Admin' : 'Admin'}</span>
             </button>
           )}
 
           {uploadTargetId && (
-            <div className="relative w-11 h-11 rounded-full border-2 border-black overflow-hidden group cursor-pointer shrink-0 ml-2 shadow-sm bg-white">
-              <img src={displayPhoto || `https://api.dicebear.com/7.x/initials/svg?seed=${getInitials(targetName)}&backgroundColor=b6e3f4`} alt="Profile" className="w-full h-full object-cover" />
+            <div className={`relative w-9 h-9 rounded-full border-2 ${borderMain} overflow-hidden group cursor-pointer shrink-0 ml-1 shadow-sm ${bgCard}`}>
+              {displayPhoto ? (
+                <img src={displayPhoto} alt="Profile" className="w-full h-full object-cover" />
+              ) : (
+                <div className={`w-full h-full flex items-center justify-center ${bgInput}`}>
+                  <User size={18} className={textMuted} />
+                </div>
+              )}
               <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                <Camera size={16} className="text-white" />
+                <Camera size={14} className="text-white" />
               </div>
               <input type="file" accept="image/*" className="absolute inset-0 opacity-0 cursor-pointer" onChange={handlePhotoUpload} />
             </div>
           )}
 
           <div className="relative flex items-center">
-            <button onClick={() => setShowThemeMenu(!showThemeMenu)} className="p-2.5 rounded-full bg-white border-2 border-black hover:bg-gray-50 transition-colors ml-1" title="Color Theme">
-              <Palette size={20} className="text-gray-700" />
+            <button onClick={toggleDarkMode} className={`p-2 rounded-full ${bgCard} border-2 ${borderMain} ${hoverCard} transition-colors ml-1`} title="Toggle Dark Mode">
+              {isDark ? <Sun size={16} className={textMain} /> : <Moon size={16} className={textMain} />}
+            </button>
+            <button onClick={() => setShowThemeMenu(!showThemeMenu)} className={`p-2 rounded-full ${bgCard} border-2 ${borderMain} ${hoverCard} transition-colors ml-1`} title="Color Theme">
+              <Palette size={16} className={textMain} />
             </button>
             {showThemeMenu && (
-              <div className="absolute right-0 top-full mt-2 p-3 bg-white border-2 border-black rounded-2xl shadow-xl flex gap-3 z-50 animate-in fade-in zoom-in-95 duration-200">
+              <div className={`absolute right-0 top-full mt-2 p-2 ${bgCard} border-2 ${borderMain} rounded-xl shadow-xl flex gap-2 z-50 animate-in fade-in zoom-in-95 duration-200`}>
                 {Object.values(THEMES).map(t => (
                   <button 
                     key={t.id} 
                     onClick={() => changeTheme(t.id)} 
-                    className={`w-8 h-8 rounded-full border-2 border-black shadow-inner ${t.primary} transition-all ${userThemeId === t.id ? 'ring-2 ring-offset-2 ring-black scale-110' : 'hover:scale-110 opacity-70 hover:opacity-100'}`} 
+                    className={`w-7 h-7 rounded-full border-2 ${borderMain} shadow-inner ${t.primary} transition-all ${userThemeId === t.id ? `ring-2 ring-offset-1 ${isDark ? 'ring-slate-500' : 'ring-black'} scale-110` : 'hover:scale-110 opacity-70 hover:opacity-100'}`} 
                     title={t.name} 
                   />
                 ))}
@@ -645,296 +739,262 @@ export default function App() {
             )}
           </div>
 
-          <button onClick={() => auth.signOut()} className="text-gray-500 hover:text-red-600 font-bold ml-1 p-2 rounded-full bg-white border-2 border-black hover:bg-red-50 transition-colors">
-            <LogOut size={20} />
+          <button onClick={() => auth.signOut()} className={`${textMuted} ${isDark ? 'hover:text-red-400 hover:bg-red-900/50' : 'hover:text-red-700 hover:bg-red-50'} font-bold ml-1 p-2 rounded-full ${bgCard} border-2 ${borderMain} transition-colors`}>
+            <LogOut size={16} />
           </button>
         </div>
       </div>
 
       {/* Settings Link */}
       {isStaff && selectedStudentId && !showAdminPanel && !viewAsStudent && (
-        <div className="w-full max-w-6xl text-right mb-6 px-4">
+        <div className="w-full max-w-6xl text-right mb-4 px-2">
           <button 
             onClick={() => setShowSettings(!showSettings)} 
-            className={`${currentTheme.text} ${currentTheme.hoverText} font-black text-sm uppercase tracking-widest transition-colors flex items-center justify-end gap-1 ml-auto underline underline-offset-4 decoration-2`}>
-            <Settings size={14} /> {showSettings ? 'Close Configuration' : 'Configure Student Information'}
+            className={`${themeText} font-black text-xs uppercase tracking-widest transition-colors flex items-center justify-end gap-1 ml-auto underline underline-offset-2 decoration-2`}>
+            <Settings size={12} /> {showSettings ? 'Close Configuration' : 'Configure Student Information'}
           </button>
         </div>
       )}
 
       {showAdminPanel ? (
-        <div className={`w-full max-w-6xl ${currentTheme.primary} rounded-[40px] p-8 md:p-12 shadow-lg border-[3px] ${currentTheme.borderDark} mt-4 text-center transition-colors duration-500`}>
-          <Shield size={48} className="text-white opacity-20 mx-auto mb-4" />
-          <h2 className="text-3xl font-black text-white mb-4">Admin Dashboard</h2>
-          <p className="text-white/80 text-lg mb-8">Welcome to the Admin side. Global settings, configurations, and user management live here.</p>
+        <div className={`w-full max-w-6xl ${currentTheme.primary} rounded-[24px] p-6 md:p-8 shadow-lg border-[3px] ${currentTheme.borderDark} mt-2 text-center transition-colors duration-500`}>
+          <Shield size={32} className="text-white opacity-20 mx-auto mb-2" />
+          <h2 className="text-2xl font-black text-white mb-2">Admin Dashboard</h2>
+          <p className="text-white/80 text-sm mb-6">Welcome to the Admin side. Global settings, configurations, and user management live here.</p>
           
-          <div className="bg-white p-8 rounded-3xl border-2 border-black text-left space-y-6 max-w-4xl mx-auto shadow-sm mt-8 mb-8">
-            <div className="flex flex-col md:flex-row justify-between items-center border-b-2 border-gray-200 pb-2 mb-4">
-              <h3 className={`font-black text-xl flex items-center gap-2 ${currentTheme.text}`}><Users size={24} /> User Access Management</h3>
+          <div className={`${bgCard} p-6 rounded-2xl border-2 ${borderMain} text-left space-y-5 max-w-4xl mx-auto shadow-sm mt-4 mb-6`}>
+            <div className={`flex flex-col md:flex-row justify-between items-center border-b-2 ${borderLight} pb-2 mb-3`}>
+              <h3 className={`font-black text-lg flex items-center gap-2 ${themeText}`}><Users size={20} /> User Access Management</h3>
               <button 
                 onClick={handleBulkExport} 
                 disabled={isExporting || studentsList.length === 0}
-                className="flex items-center gap-2 px-4 py-2 bg-emerald-50 text-[#2D6A4F] border-2 border-black rounded-xl text-xs font-black uppercase tracking-widest hover:bg-emerald-100 transition-all disabled:opacity-50">
-                {isExporting ? <Loader2 className="animate-spin" size={14} /> : <Download size={14} />} 
+                className={`flex items-center gap-2 px-3 py-1.5 ${isDark ? 'bg-emerald-900/40' : 'bg-emerald-50'} ${isDark ? 'text-emerald-400' : 'text-[#2D6A4F]'} border-2 ${borderMain} rounded-lg text-[10px] font-black uppercase tracking-widest ${isDark ? 'hover:bg-emerald-900/60' : 'hover:bg-emerald-100'} transition-all disabled:opacity-50 mt-2 md:mt-0`}>
+                {isExporting ? <Loader2 className="animate-spin" size={12} /> : <Download size={12} />} 
                 Master Data Export
               </button>
             </div>
             
-            <div className="flex flex-col md:flex-row gap-3">
-              <input type="email" placeholder="Google Email Address..." className={`flex-1 p-3 border-2 border-black rounded-xl font-bold text-gray-700 outline-none focus:${currentTheme.border}`} value={newAllowedEmail} onChange={e => setNewAllowedEmail(e.target.value)} />
-              <select className={`p-3 border-2 border-black rounded-xl font-bold text-gray-700 outline-none focus:${currentTheme.border}`} value={newAllowedRole} onChange={e => setNewAllowedRole(e.target.value)}>
+            <div className="flex flex-col md:flex-row gap-2.5">
+              <input type="email" placeholder="Google Email Address..." className={`flex-1 p-2.5 text-sm border-2 ${borderMain} rounded-xl font-bold ${textMain} outline-none focus:${currentTheme.border} ${bgInput}`} value={newAllowedEmail} onChange={e => setNewAllowedEmail(e.target.value)} />
+              <select className={`p-2.5 text-sm border-2 ${borderMain} rounded-xl font-bold ${textMain} outline-none focus:${currentTheme.border} ${bgInput}`} value={newAllowedRole} onChange={e => setNewAllowedRole(e.target.value)}>
                 <option value="student">Student</option>
                 <option value="teacher">Teacher (Staff)</option>
                 <option value="admin">Admin</option>
               </select>
-              <button onClick={handleAddAllowedUser} className={`px-6 py-3 ${currentTheme.primary} ${currentTheme.hover} text-white font-bold rounded-xl border-2 border-black transition-colors`}>Add User</button>
+              <button onClick={handleAddAllowedUser} className={`px-5 py-2.5 text-sm ${currentTheme.primary} ${currentTheme.hover} text-white font-bold rounded-xl border-2 ${borderMain} transition-colors`}>Add User</button>
             </div>
 
-            <div className="space-y-3 mt-4 max-h-[300px] overflow-y-auto pr-2">
+            <div className="space-y-2 mt-4 max-h-[250px] overflow-y-auto pr-2">
               {allowedUsersList.map(u => (
-                <div key={u.email} className="flex justify-between items-center p-4 border-2 border-black rounded-xl bg-gray-50 hover:bg-white transition-colors">
+                <div key={u.email} className={`flex justify-between items-center p-3 border-2 ${borderMain} rounded-xl ${bgInput} ${hoverCard} transition-colors`}>
                   <div>
-                    <div className="font-bold text-gray-900">{u.email}</div>
-                    <div className={`text-xs font-black uppercase tracking-widest mt-1 ${currentTheme.text}`}>{u.role}</div>
+                    <div className={`font-bold text-sm ${textMain}`}>{u.email}</div>
+                    <div className={`text-[10px] font-black uppercase tracking-widest mt-0.5 ${themeText}`}>{u.role}</div>
                   </div>
                   {u.email.toLowerCase() !== ADMIN_EMAIL.toLowerCase() && (
-                    <button onClick={() => handleDeleteAllowedUser(u.email)} className="p-2 border-2 border-black text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={18}/></button>
+                    <button onClick={() => handleDeleteAllowedUser(u.email)} className={`p-2 border-2 ${borderMain} text-red-500 ${isDark ? 'hover:text-red-400 hover:bg-red-900/50' : 'hover:text-red-700 hover:bg-red-50'} rounded-lg transition-colors`}><Trash2 size={16}/></button>
                   )}
                 </div>
               ))}
             </div>
 
-            <h3 className={`font-black text-xl border-b-2 border-gray-200 pb-2 flex items-center gap-2 mt-8 ${currentTheme.text}`}><Users size={24} /> Registered Students (Data)</h3>
-            <div className="space-y-3 mt-4 max-h-[300px] overflow-y-auto pr-2">
+            <h3 className={`font-black text-lg border-b-2 ${borderLight} pb-2 flex items-center gap-2 mt-6 ${themeText}`}><Users size={20} /> Registered Students (Data)</h3>
+            <div className="space-y-2 mt-3 max-h-[250px] overflow-y-auto pr-2">
               {studentsList.map(s => (
-                <div key={s.id} className="flex justify-between items-center p-4 border-2 border-black rounded-xl bg-gray-50 hover:bg-white transition-colors">
+                <div key={s.id} className={`flex justify-between items-center p-3 border-2 ${borderMain} rounded-xl ${bgInput} ${hoverCard} transition-colors`}>
                   <div>
-                    <div className="font-bold text-gray-900">{s.name}</div>
-                    <div className="text-xs font-black uppercase tracking-widest text-gray-500 mt-1">{s.email}</div>
+                    <div className={`font-bold text-sm ${textMain}`}>{s.name}</div>
+                    <div className={`text-[10px] font-black uppercase tracking-widest ${textMuted} mt-0.5`}>{s.email}</div>
                   </div>
-                  <button onClick={() => handleDeleteStudent(s.id, s.name)} className="p-2 border-2 border-black text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors" title="Delete Student Record"><Trash2 size={18}/></button>
+                  <button onClick={() => handleDeleteStudent(s.id, s.name)} className={`p-2 border-2 ${borderMain} text-red-500 ${isDark ? 'hover:text-red-400 hover:bg-red-900/50' : 'hover:text-red-700 hover:bg-red-50'} rounded-lg transition-colors`} title="Delete Student Record"><Trash2 size={16}/></button>
                 </div>
               ))}
-              {studentsList.length === 0 && <div className="text-gray-500 font-bold p-4">No registered students found.</div>}
+              {studentsList.length === 0 && <div className={`${textMuted} font-bold text-sm p-3`}>No registered students found.</div>}
             </div>
           </div>
 
-          <button onClick={() => setShowAdminPanel(false)} className={`px-8 py-4 bg-white ${currentTheme.text} font-bold rounded-2xl hover:bg-gray-100 transition-all shadow-xl border-2 border-black`}>
+          <button onClick={() => setShowAdminPanel(false)} className={`px-6 py-3 text-sm ${bgCard} ${themeText} font-bold rounded-xl ${hoverCard} transition-all shadow-md border-2 ${borderMain}`}>
             Return to Student Selection
           </button>
         </div>
       ) : showSettings ? (
-        <div className={`w-full max-w-6xl bg-slate-200 rounded-[40px] p-8 shadow-sm border-[3px] ${currentTheme.border} mt-4 transition-colors duration-500`}>
-          <div className="flex items-center justify-center gap-3 mb-8">
-            <Settings size={32} className={currentTheme.text} />
-            <h2 className="text-3xl font-black text-gray-900">Student Configuration</h2>
+        <div className={`w-full max-w-6xl ${bgPanel} rounded-[24px] p-6 shadow-sm border-[3px] ${currentTheme.border} mt-2 transition-colors duration-500`}>
+          <div className="flex items-center justify-center gap-2 mb-6">
+            <Settings size={28} className={themeText} />
+            <h2 className="text-2xl font-black text-gray-900">Student Configuration</h2>
           </div>
           
-          <div className="bg-white p-8 rounded-3xl border border-gray-200 text-left space-y-6 max-w-3xl mx-auto shadow-sm">
-            <div className="space-y-4">
-              <h3 className="font-black text-lg text-gray-800 border-b-2 border-gray-100 pb-2 flex items-center gap-2"><Flame size={20} className="text-orange-500"/> Scoring Metrics</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className={`${bgCard} p-6 rounded-2xl border ${borderLight} text-left space-y-5 max-w-3xl mx-auto shadow-sm`}>
+            <div className="space-y-3">
+              <h3 className={`font-black text-base ${textMain} border-b-2 ${borderLight} pb-1.5 flex items-center gap-2`}><Flame size={16} className="text-orange-500"/> Scoring Metrics</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">Starting Health Score (Overall)</label>
-                  <input type="number" className={`w-full p-3 bg-gray-50 border-2 border-black rounded-xl font-bold text-gray-700 outline-none focus:${currentTheme.border}`} value={startingScore} onChange={e => setStartingScore(Number(e.target.value))} />
+                  <label className={`block text-[10px] font-black ${textMuted} uppercase tracking-widest mb-1.5`}>Starting Health Score (Overall)</label>
+                  <input type="number" className={`w-full p-2.5 text-sm ${bgInput} border-2 ${borderMain} rounded-xl font-bold ${textMain} outline-none focus:${currentTheme.border}`} value={startingScore} onChange={e => setStartingScore(Number(e.target.value))} />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">Manually Edit Daily Score (+ / -)</label>
-                  <input type="number" className={`w-full p-3 bg-gray-50 border-2 border-black rounded-xl font-bold text-gray-700 outline-none focus:${currentTheme.border}`} value={teacherDailyAdjustment} onChange={e => setTeacherDailyAdjustment(Number(e.target.value))} />
+                  <label className={`block text-[10px] font-black ${textMuted} uppercase tracking-widest mb-1.5`}>Manually Edit Daily Score (+ / -)</label>
+                  <input type="number" className={`w-full p-2.5 text-sm ${bgInput} border-2 ${borderMain} rounded-xl font-bold ${textMain} outline-none focus:${currentTheme.border}`} value={teacherDailyAdjustment} onChange={e => setTeacherDailyAdjustment(Number(e.target.value))} />
                 </div>
                 <div className="md:col-span-2">
-                  <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">Manually Edit Overall Score (+ / -)</label>
-                  <input type="number" className={`w-full p-3 bg-gray-50 border-2 border-black rounded-xl font-bold text-gray-700 outline-none focus:${currentTheme.border}`} value={teacherAdjustment} onChange={e => setTeacherAdjustment(Number(e.target.value))} />
+                  <label className={`block text-[10px] font-black ${textMuted} uppercase tracking-widest mb-1.5`}>Manually Edit Overall Score (+ / -)</label>
+                  <input type="number" className={`w-full p-2.5 text-sm ${bgInput} border-2 ${borderMain} rounded-xl font-bold ${textMain} outline-none focus:${currentTheme.border}`} value={teacherAdjustment} onChange={e => setTeacherAdjustment(Number(e.target.value))} />
                 </div>
                 <div className="md:col-span-2">
-                  <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">Goal Text (e.g. "No missing work", "Less than 5 missing")</label>
-                  <input type="text" className={`w-full p-3 bg-gray-50 border-2 border-black rounded-xl font-bold text-gray-700 outline-none focus:${currentTheme.border}`} value={goalText} onChange={e => setGoalText(e.target.value)} />
+                  <label className={`block text-[10px] font-black ${textMuted} uppercase tracking-widest mb-1.5`}>Goal Text (e.g. "No missing work", "Less than 5 missing")</label>
+                  <input type="text" className={`w-full p-2.5 text-sm ${bgInput} border-2 ${borderMain} rounded-xl font-bold ${textMain} outline-none focus:${currentTheme.border}`} value={goalText} onChange={e => setGoalText(e.target.value)} />
                 </div>
               </div>
             </div>
 
-            <div className="space-y-4 pt-4">
-              <h3 className="font-black text-lg text-gray-800 border-b-2 border-gray-100 pb-2 flex items-center gap-2"><Activity size={20} className={currentTheme.text}/> Tracked Classes</h3>
+            <div className="space-y-3 pt-3">
+              <h3 className={`font-black text-base ${textMain} border-b-2 ${borderLight} pb-1.5 flex items-center gap-2`}><Activity size={16} className={themeText}/> Tracked Classes</h3>
               {subjects.map((sub, i) => (
                 <div key={i} className="flex gap-2">
-                  <input className={`flex-1 p-3 bg-gray-50 border-2 border-black rounded-xl font-bold text-gray-700 outline-none focus:${currentTheme.border}`} value={sub} onChange={e => { const n = [...subjects]; n[i] = e.target.value; setSubjects(n); }} />
-                  <button onClick={() => setSubjects(subjects.filter((_, idx) => idx !== i))} className="p-3 border-2 border-black text-red-500 hover:text-red-700 hover:bg-red-50 rounded-xl transition-all"><Trash2 size={20}/></button>
+                  <input className={`flex-1 p-2.5 text-sm ${bgInput} border-2 ${borderMain} rounded-xl font-bold ${textMain} outline-none focus:${currentTheme.border}`} value={sub} onChange={e => { const n = [...subjects]; n[i] = e.target.value; setSubjects(n); }} />
+                  <button onClick={() => setSubjects(subjects.filter((_, idx) => idx !== i))} className={`p-2.5 border-2 ${borderMain} text-red-500 ${isDark ? 'hover:text-red-400 hover:bg-red-900/50' : 'hover:text-red-700 hover:bg-red-50'} rounded-xl transition-all`}><Trash2 size={18}/></button>
                 </div>
               ))}
-              <button onClick={() => setSubjects([...subjects, ''])} className="px-4 py-3 bg-emerald-50 text-[#2D6A4F] font-bold rounded-xl hover:bg-emerald-100 transition-all text-sm border-2 border-black">+ Add Class</button>
+              <button onClick={() => setSubjects([...subjects, ''])} className={`px-4 py-2.5 ${isDark ? 'bg-emerald-900/40 text-emerald-400 hover:bg-emerald-900/60' : 'bg-emerald-50 text-[#2D6A4F] hover:bg-emerald-100'} font-bold rounded-xl transition-all text-xs border-2 ${borderMain}`}>+ Add Class</button>
             </div>
 
-            <div className="space-y-4 pt-4">
-              <h3 className="font-black text-lg text-gray-800 border-b-2 border-gray-100 pb-2 flex items-center gap-2"><CheckCircle2 size={20} className="text-[#2D6A4F]"/> Target Habits</h3>
+            <div className="space-y-3 pt-3">
+              <h3 className={`font-black text-base ${textMain} border-b-2 ${borderLight} pb-1.5 flex items-center gap-2`}><CheckCircle2 size={16} className={isDark ? "text-emerald-400" : "text-[#2D6A4F]"}/> Target Habits</h3>
               {habits.map((hab, i) => (
                 <div key={i} className="flex gap-2">
-                  <input className={`flex-1 p-3 bg-gray-50 border-2 border-black rounded-xl font-bold text-gray-700 outline-none focus:${currentTheme.border}`} value={hab} onChange={e => { const n = [...habits]; n[i] = e.target.value; setHabits(n); }} />
-                  <button onClick={() => setHabits(habits.filter((_, idx) => idx !== i))} className="p-3 border-2 border-black text-red-500 hover:text-red-700 hover:bg-red-50 rounded-xl transition-all"><Trash2 size={20}/></button>
+                  <input className={`flex-1 p-2.5 text-sm ${bgInput} border-2 ${borderMain} rounded-xl font-bold ${textMain} outline-none focus:${currentTheme.border}`} value={hab} onChange={e => { const n = [...habits]; n[i] = e.target.value; setHabits(n); }} />
+                  <button onClick={() => setHabits(habits.filter((_, idx) => idx !== i))} className={`p-2.5 border-2 ${borderMain} text-red-500 ${isDark ? 'hover:text-red-400 hover:bg-red-900/50' : 'hover:text-red-700 hover:bg-red-50'} rounded-xl transition-all`}><Trash2 size={18}/></button>
                 </div>
               ))}
-              <button onClick={() => setHabits([...habits, ''])} className="px-4 py-3 bg-emerald-50 text-[#2D6A4F] font-bold rounded-xl hover:bg-emerald-100 transition-all text-sm border-2 border-black">+ Add Habit</button>
+              <button onClick={() => setHabits([...habits, ''])} className={`px-4 py-2.5 ${isDark ? 'bg-emerald-900/40 text-emerald-400 hover:bg-emerald-900/60' : 'bg-emerald-50 text-[#2D6A4F] hover:bg-emerald-100'} font-bold rounded-xl transition-all text-xs border-2 ${borderMain}`}>+ Add Habit</button>
             </div>
 
-            <div className="pt-6 border-t border-gray-100 flex flex-col md:flex-row gap-4">
-              <button onClick={saveSettings} className={`flex-1 py-4 ${currentTheme.primary} text-white font-black rounded-xl ${currentTheme.hover} transition-all shadow-md border-2 border-black border-b-[6px] active:border-b-2 active:translate-y-[4px]`}>Save Settings</button>
-              <button onClick={() => setShowSettings(false)} className="px-8 py-4 bg-white border-2 border-black text-gray-700 font-bold rounded-xl hover:bg-gray-50 transition-all shadow-sm">Cancel</button>
+            <div className={`pt-4 border-t ${borderLight} flex flex-col md:flex-row gap-3`}>
+              <button onClick={saveSettings} className={`flex-1 py-3 text-sm ${currentTheme.primary} text-white font-black rounded-xl ${currentTheme.hover} transition-all shadow-md border-2 ${borderMain} border-b-[4px] active:border-b-2 active:translate-y-[2px]`}>Save Settings</button>
+              <button onClick={() => setShowSettings(false)} className={`px-8 py-3 text-sm ${bgCard} border-2 ${borderMain} ${textMain} font-bold rounded-xl ${hoverCard} transition-all shadow-sm`}>Cancel</button>
             </div>
           </div>
         </div>
       ) : !selectedStudentId ? (
-        <div className={`w-full max-w-3xl ${currentTheme.primary} rounded-[40px] p-12 text-center shadow-lg border-[3px] ${currentTheme.borderDark} mt-8 transition-colors duration-500`}>
-          <Activity size={48} className="text-white opacity-20 mx-auto mb-4" />
-          <h2 className="text-3xl font-black text-white mb-2">Ready to Equip?</h2>
-          <p className="text-white/80 text-lg">Select a student from the menu above to start your session.</p>
+        <div className={`w-full max-w-3xl ${currentTheme.primary} rounded-[24px] p-8 text-center shadow-lg border-[3px] ${currentTheme.borderDark} mt-4 transition-colors duration-500`}>
+          <Activity size={40} className="text-white opacity-20 mx-auto mb-3" />
+          <h2 className="text-2xl font-black text-white mb-2">Ready to Equip?</h2>
+          <p className="text-white/80 text-sm">Select a student from the menu above to start your session.</p>
         </div>
       ) : (
-        <div className="w-full max-w-6xl grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 space-y-6">
-            
-            {/* Health Score Panel */}
-            <div className={`bg-slate-200 rounded-[40px] p-8 shadow-sm border-[3px] ${currentTheme.border} flex flex-col md:flex-row items-center justify-between gap-8 transition-colors duration-500`}>
-              <div className="flex-1 text-center md:text-left">
-                <h1 className="text-3xl font-black text-gray-900 tracking-tight">Academic Health</h1>
-                <div className="flex items-center justify-center md:justify-start gap-2 text-orange-500 mt-2 font-black uppercase text-xs tracking-widest">
-                  <Flame size={16} fill="currentColor" /> {currentStreak} Day Streak
-                </div>
-              </div>
-              <div className="flex items-center gap-8">
-                <div className="flex flex-col items-center">
-                  <div className="relative flex items-center justify-center w-24 h-24 font-black text-2xl">
-                    <svg className="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
-                      <circle cx="50" cy="50" r="45" fill="none" stroke="#d1d5db" strokeWidth="8" />
-                      <circle cx="50" cy="50" r="45" fill="none" stroke="currentColor" strokeWidth="8" strokeDasharray="283" strokeDashoffset={283 * (1 - todayScore/100)} className={`${getHealthColor(todayScore)} transition-all duration-1000`} strokeLinecap="round" />
-                    </svg>
-                    <div className="absolute">{todayScore}</div>
-                  </div>
-                  <span className="text-[10px] font-black uppercase text-gray-500 mt-2 tracking-widest">Today</span>
-                </div>
-                <div className="flex flex-col items-center relative">
-                  <div className="relative flex items-center justify-center w-32 h-32 font-black text-4xl">
-                    <svg className="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
-                      <circle cx="50" cy="50" r="45" fill="none" stroke="#d1d5db" strokeWidth="10" />
-                      <circle cx="50" cy="50" r="45" fill="none" stroke="currentColor" strokeWidth="10" strokeDasharray="283" strokeDashoffset={283 * (1 - Math.min(healthScore, 100)/100)} className={`${getHealthColor(healthScore)} transition-all duration-1000`} strokeLinecap="round" />
-                    </svg>
-                    <div className="absolute">{healthScore}</div>
-                    {fireworksActive && <Sparkles size={60} className="absolute text-yellow-500 animate-bounce" />}
-                  </div>
-                  <span className="text-[10px] font-black uppercase text-gray-500 mt-2 tracking-widest">Overall</span>
-                </div>
-              </div>
-            </div>
+        <div className="w-full max-w-6xl grid grid-cols-1 lg:grid-cols-3 gap-3 md:gap-4">
+          <div className="lg:col-span-2 space-y-3 md:space-y-4">
 
             {/* Daily Submission Panel */}
             {!isEffectivelyStaff && (
-              <div className={`bg-slate-200 rounded-[40px] p-8 shadow-sm border-[3px] ${currentTheme.border} transition-colors duration-500`}>
+              <div className={`${bgPanel} rounded-[20px] md:rounded-[24px] p-3 md:p-4 shadow-sm border-[3px] ${currentTheme.border} transition-colors duration-500`}>
                 {isSubmittedToday && !isEditingToday ? (
-                  <div className="text-center py-10">
-                    <div className="w-20 h-20 bg-emerald-50 rounded-full flex items-center justify-center mx-auto mb-6 border-4 border-emerald-100"><CheckCircle2 size={40} className="text-[#2D6A4F]" /></div>
-                    <h2 className="text-2xl font-black text-gray-900 mb-2">Check-in Complete!</h2>
-                    <p className="text-gray-500 mb-8">You've logged your progress for today.</p>
-                    <button onClick={() => setIsEditingToday(true)} className="px-6 py-3 bg-white border-2 border-black text-gray-700 font-bold rounded-xl hover:bg-gray-50"><Edit3 size={18} className="inline mr-2" /> Edit Entry</button>
+                  <div className="text-center py-6">
+                    <div className={`w-16 h-16 ${isDark ? 'bg-emerald-900/40 border-emerald-800' : 'bg-emerald-50 border-emerald-100'} rounded-full flex items-center justify-center mx-auto mb-4 border-4`}><CheckCircle2 size={32} className={isDark ? "text-emerald-400" : "text-[#2D6A4F]"} /></div>
+                    <h2 className={`text-xl font-black ${textMain} mb-1`}>Check-in Complete!</h2>
+                    <p className={`${textMuted} text-sm mb-6`}>You've logged your progress for today.</p>
+                    <button onClick={() => setIsEditingToday(true)} className={`px-5 py-2.5 text-sm ${bgCard} border-2 ${borderMain} ${textMain} font-bold rounded-xl ${hoverCard}`}><Edit3 size={16} className="inline mr-1.5" /> Edit Entry</button>
                   </div>
                 ) : (
-                  <div className="space-y-8 animate-in fade-in duration-300">
-                    <h2 className={`text-xl font-black flex items-center gap-2 ${currentTheme.text}`}><Activity size={24} /> Today's Focus</h2>
+                  <div className="space-y-3 animate-in fade-in duration-300">
                     
-                    <div className="bg-white border-2 border-gray-200 p-6 rounded-3xl shadow-sm">
-                      <p className="font-bold text-gray-800 mb-4">Select classes with <strong className={currentTheme.text}>{goalText}</strong>:</p>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                    <div className={`${bgCard} border-2 ${borderLight} p-3 rounded-2xl shadow-sm`}>
+                      <p className={`font-bold text-sm ${textMain} mb-2`}>Select classes with <strong className={themeText}>{goalText}</strong>:</p>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
                         {activeSubjects.map(sub => (
                           <button 
                             key={sub} 
                             onClick={() => { const current = todayData.caughtUpSubjects.includes(sub); setTodayData({...todayData, caughtUpSubjects: current ? todayData.caughtUpSubjects.filter(s => s !== sub) : [...todayData.caughtUpSubjects, sub]}); current ? playUnclick() : playClick(); setIsNoneSubjects(false); }} 
-                            className={`p-4 rounded-2xl border-2 font-bold text-sm transition-all text-left flex items-center gap-3 border-black ${todayData.caughtUpSubjects.includes(sub) && !isNoneSubjects ? 'bg-[#E8F5E9] text-[#1B4332] shadow-sm' : 'bg-white text-gray-700 hover:bg-gray-50'}`}>
-                            {todayData.caughtUpSubjects.includes(sub) && !isNoneSubjects ? <CheckCircle2 size={18} /> : <Circle size={18} className="text-gray-400" />} {sub}
+                            className={`p-2.5 rounded-xl border-2 font-bold text-xs transition-all text-left flex items-center gap-2 ${borderMain} ${todayData.caughtUpSubjects.includes(sub) && !isNoneSubjects ? (isDark ? 'bg-emerald-900/40 text-emerald-400 shadow-sm' : 'bg-[#E8F5E9] text-[#1B4332] shadow-sm') : `${bgCard} ${textMain} ${hoverCard}`}`}>
+                            {todayData.caughtUpSubjects.includes(sub) && !isNoneSubjects ? <CheckCircle2 size={18} /> : <Circle size={18} className={textMuted} />} {sub}
                           </button>
                         ))}
                       </div>
                       <button 
                         onClick={() => { const next = !isNoneSubjects; setIsNoneSubjects(next); setTodayData({...todayData, caughtUpSubjects: []}); next ? playClick() : playUnclick(); }} 
-                        className={`mt-4 w-full p-4 rounded-xl border-2 font-bold transition-all border-black text-left flex items-center gap-3 ${isNoneSubjects ? 'bg-[#E8F5E9] text-[#1B4332] shadow-sm' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
-                        {isNoneSubjects ? <CheckCircle2 size={18} /> : <Circle size={18} className="text-gray-400" />} I am not fully caught up in any classes yet.
+                        className={`mt-2.5 w-full p-2.5 rounded-xl border-2 font-bold text-xs transition-all text-left flex items-center gap-2 ${borderMain} ${isNoneSubjects ? (isDark ? 'bg-emerald-900/40 text-emerald-400 shadow-sm' : 'bg-[#E8F5E9] text-[#1B4332] shadow-sm') : `${bgCard} ${textMuted} ${hoverCard}`}`}>
+                        {isNoneSubjects ? <CheckCircle2 size={18} /> : <Circle size={18} className={textMuted} />} I am not fully caught up in any classes yet.
                       </button>
                     </div>
 
-                    <div className="bg-white border-2 border-gray-200 p-6 rounded-3xl shadow-sm">
-                      <p className="font-bold text-gray-800 mb-4">Target habit goals:</p>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div className={`${bgCard} border-2 ${borderLight} p-3 rounded-2xl shadow-sm`}>
+                      <p className={`font-bold text-sm ${textMain} mb-2`}>Target habit goals:</p>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
                         {activeHabits.map(hab => (
                           <button 
                             key={hab} 
                             onClick={() => { const current = todayData.completedHabits.includes(hab); setTodayData({...todayData, completedHabits: current ? todayData.completedHabits.filter(h => h !== hab) : [...todayData.completedHabits, hab]}); current ? playUnclick() : playClick(); setIsNoneHabits(false); }} 
-                            className={`p-4 rounded-2xl border-2 font-bold text-sm transition-all text-left flex items-center gap-3 border-black ${todayData.completedHabits.includes(hab) && !isNoneHabits ? 'bg-[#E8F5E9] text-[#1B4332] shadow-sm' : 'bg-white text-gray-700 hover:bg-gray-50'}`}>
-                            {todayData.completedHabits.includes(hab) && !isNoneHabits ? <CheckCircle2 size={18} /> : <Circle size={18} className="text-gray-400" />} {hab}
+                            className={`p-2.5 rounded-xl border-2 font-bold text-xs transition-all text-left flex items-center gap-2 ${borderMain} ${todayData.completedHabits.includes(hab) && !isNoneHabits ? (isDark ? 'bg-emerald-900/40 text-emerald-400 shadow-sm' : 'bg-[#E8F5E9] text-[#1B4332] shadow-sm') : `${bgCard} ${textMain} ${hoverCard}`}`}>
+                            {todayData.completedHabits.includes(hab) && !isNoneHabits ? <CheckCircle2 size={18} /> : <Circle size={18} className={textMuted} />} {hab}
                           </button>
                         ))}
                       </div>
                       <button 
                         onClick={() => { const next = !isNoneHabits; setIsNoneHabits(next); setTodayData({...todayData, completedHabits: []}); next ? playClick() : playUnclick(); }} 
-                        className={`mt-4 w-full p-4 rounded-xl border-2 font-bold transition-all border-black text-left flex items-center gap-3 ${isNoneHabits ? 'bg-[#E8F5E9] text-[#1B4332] shadow-sm' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
-                        {isNoneHabits ? <CheckCircle2 size={18} /> : <Circle size={18} className="text-gray-400" />} I did not meet these habit goals today.
+                        className={`mt-2.5 w-full p-2.5 rounded-xl border-2 font-bold text-xs transition-all text-left flex items-center gap-2 ${borderMain} ${isNoneHabits ? (isDark ? 'bg-emerald-900/40 text-emerald-400 shadow-sm' : 'bg-[#E8F5E9] text-[#1B4332] shadow-sm') : `${bgCard} ${textMuted} ${hoverCard}`}`}>
+                        {isNoneHabits ? <CheckCircle2 size={18} /> : <Circle size={18} className={textMuted} />} I did not meet these habit goals today.
                       </button>
                     </div>
 
                     {/* Student Comment Area */}
-                    <div className="bg-white border-2 border-gray-200 p-6 rounded-3xl shadow-sm">
-                      <p className="font-bold text-gray-800 mb-4">Do you want to add a comment for your instructor?</p>
+                    <div className={`${bgCard} border-2 ${borderLight} p-3 rounded-2xl shadow-sm`}>
+                      <p className={`font-bold text-sm ${textMain} mb-2`}>Do you want to add a comment for your instructor?</p>
                       <textarea 
-                        className={`w-full p-4 rounded-xl border-2 border-black font-bold text-sm text-gray-700 outline-none focus:${currentTheme.border} resize-none h-24`}
+                        className={`w-full p-2.5 rounded-xl border-2 ${borderMain} font-bold text-xs ${textMain} outline-none focus:${currentTheme.border} resize-none h-14 ${bgInput}`}
                         placeholder="Type your message here..."
                         value={todayData.newNote}
                         onChange={(e) => setTodayData({...todayData, newNote: e.target.value})}
                       />
                     </div>
 
-                    <button onClick={submitToday} className={`w-full py-5 ${currentTheme.primary} ${currentTheme.hover} text-white font-black text-xl shadow-lg border-2 border-black border-b-[6px] active:border-b-2 active:translate-y-[4px] transition-all flex items-center justify-center gap-2`}><Send /> Save Daily Progress</button>
+                    <button onClick={submitToday} className={`w-full py-3 text-base ${currentTheme.primary} ${currentTheme.hover} text-white font-black shadow-md border-2 ${borderMain} border-b-[4px] active:border-b-2 active:translate-y-[2px] transition-all flex items-center justify-center gap-2 rounded-xl`}><Send size={18} /> Save Daily Progress</button>
                   </div>
                 )}
               </div>
             )}
 
             {/* History Panel */}
-            <div className="space-y-4 pt-4">
+            <div className="space-y-3 pt-2">
               <div className="flex justify-between items-center px-2">
-                <h2 className="text-xl font-black flex items-center gap-2 text-gray-800"><Calendar size={20} /> Submission History</h2>
+                <h2 className={`text-base font-black flex items-center gap-1.5 ${textMain}`}><Calendar size={18} className={textMuted} /> Submission History</h2>
                 {history.length > 0 && (
                   <button 
                     onClick={() => exportToCSV(history, `Equip_Data_${studentsList.find(s=>s.id===selectedStudentId)?.name || 'Student'}_${new Date().toISOString().split('T')[0]}.csv`)} 
-                    className="flex items-center gap-2 px-4 py-2 bg-white border-2 border-black rounded-xl text-xs font-black uppercase tracking-widest hover:bg-gray-50 transition-all shadow-sm">
+                    className={`flex items-center gap-1.5 px-3 py-1.5 ${bgCard} border-2 ${borderMain} rounded-lg text-[10px] font-black uppercase tracking-widest ${hoverCard} transition-all shadow-sm`}>
                     <Download size={14} /> Export CSV
                   </button>
                 )}
               </div>
               
               {history.length === 0 ? (
-                <div className="text-center py-8 px-4 border-2 border-dashed border-gray-300 rounded-3xl bg-slate-200">
-                  <p className="text-gray-500 font-bold">No entries found for this student.</p>
+                <div className={`text-center py-6 px-4 border-2 border-dashed ${borderLight} rounded-2xl ${bgPanel}`}>
+                  <p className={`${textMuted} font-bold text-sm`}>No entries found for this student.</p>
                 </div>
               ) : (
                 history.map(day => (
-                  <div key={day.id} className={`bg-slate-200 rounded-[32px] p-6 shadow-sm border-[3px] ${currentTheme.border} transition-colors duration-500`}>
-                    <div className="flex justify-between mb-4">
-                      <div className="font-black text-lg text-gray-900">{day.date}</div>
-                      <div className={`px-4 py-1 rounded-full text-white font-black text-sm border border-black/20 ${getHealthBg(Math.round(((day.caughtUpSubjects?.length||0) + (day.completedHabits?.length||0)) / (day.possibleCount||1) * 100))}`}>
+                  <div key={day.id} className={`${bgPanel} rounded-2xl p-4 shadow-sm border-[3px] ${currentTheme.border} transition-colors duration-500`}>
+                    <div className="flex justify-between mb-3">
+                      <div className={`font-black text-base ${textMain}`}>{day.date}</div>
+                      <div className={`px-3 py-0.5 rounded-full text-white font-black text-xs border border-black/20 flex items-center ${getHealthBg(Math.round(((day.caughtUpSubjects?.length||0) + (day.completedHabits?.length||0)) / (day.possibleCount||1) * 100))}`}>
                         {Math.round(((day.caughtUpSubjects?.length||0) + (day.completedHabits?.length||0)) / (day.possibleCount||1) * 100)}%
                       </div>
                     </div>
-                    <div className="flex flex-wrap gap-2 mb-4">
-                      {day.caughtUpSubjects?.map(s => <span key={s} className="px-3 py-1 bg-white text-[#2D6A4F] rounded-lg text-xs font-bold border-2 border-black">✓ {s}</span>)}
-                      {day.completedHabits?.map(h => <span key={h} className="px-3 py-1 bg-white text-[#2D6A4F] rounded-lg text-xs font-bold border-2 border-black">✓ {h}</span>)}
+                    <div className="flex flex-wrap gap-1.5 mb-3">
+                      {day.caughtUpSubjects?.map(s => <span key={s} className={`px-2 py-0.5 ${bgCard} ${isDark ? 'text-emerald-400' : 'text-[#2D6A4F]'} rounded-lg text-[10px] font-bold border-2 ${borderMain}`}>✓ {s}</span>)}
+                      {day.completedHabits?.map(h => <span key={h} className={`px-2 py-0.5 ${bgCard} ${isDark ? 'text-emerald-400' : 'text-[#2D6A4F]'} rounded-lg text-[10px] font-bold border-2 ${borderMain}`}>✓ {h}</span>)}
                     </div>
                     
-                    <div className="bg-white p-4 rounded-2xl space-y-3 shadow-sm border-2 border-black">
+                    <div className={`${bgCard} p-3 rounded-xl space-y-2 shadow-sm border-2 ${borderMain}`}>
                       {day.notes?.map((n, i) => (
                         <div key={i} className={`flex flex-col ${n.author === 'Mr. Crockett' ? 'items-end' : 'items-start'}`}>
-                          <div className={`p-3 rounded-2xl max-w-[85%] text-sm font-bold border-2 border-black ${n.author === 'Mr. Crockett' ? `${currentTheme.primary} text-white rounded-br-none` : 'bg-gray-100 text-gray-800 rounded-bl-none'}`}>{n.text}</div>
-                          <span className="text-[10px] text-gray-500 mt-1 uppercase tracking-widest font-bold">{n.author} • {n.time}</span>
+                          <div className={`p-2.5 rounded-xl max-w-[85%] text-xs font-bold border-2 ${borderMain} ${n.author === 'Mr. Crockett' ? `${currentTheme.primary} text-white rounded-br-none` : `${bgInput} ${textMain} rounded-bl-none`}`}>{n.text}</div>
+                          <span className={`text-[9px] ${textMuted} mt-1 uppercase tracking-widest font-bold`}>{n.author} • {n.time}</span>
                         </div>
                       ))}
                       {isEffectivelyStaff && (
-                        <div className="flex gap-2 pt-2 mt-2 border-t-2 border-gray-100">
-                          <input type="text" placeholder="Reply..." className={`flex-1 p-2 text-sm rounded-xl border-2 border-black outline-none focus:${currentTheme.border}`} value={replyTexts[day.id] || ''} onChange={e => setReplyTexts({...replyTexts, [day.id]: e.target.value})} onKeyDown={e => e.key === 'Enter' && submitReply(day.id)} />
-                          <button onClick={() => submitReply(day.id)} className={`p-2 px-3 ${currentTheme.primary} border-2 border-black text-white rounded-xl ${currentTheme.hover} transition-colors`}><Send size={16} /></button>
+                        <div className={`flex gap-2 pt-2 mt-2 border-t-2 ${borderLight}`}>
+                          <input type="text" placeholder="Reply..." className={`flex-1 p-2 text-xs rounded-lg border-2 ${borderMain} outline-none focus:${currentTheme.border} ${bgInput}`} value={replyTexts[day.id] || ''} onChange={e => setReplyTexts({...replyTexts, [day.id]: e.target.value})} onKeyDown={e => e.key === 'Enter' && submitReply(day.id)} />
+                          <button onClick={() => submitReply(day.id)} className={`p-2 px-3 ${currentTheme.primary} border-2 ${borderMain} text-white rounded-lg ${currentTheme.hover} transition-colors`}><Send size={14} /></button>
                         </div>
                       )}
                     </div>
@@ -945,29 +1005,29 @@ export default function App() {
 
           </div>
 
-          <div className="space-y-6">
+          <div className="space-y-4">
             {/* Research Panel Sidebar */}
-            <div className={`bg-slate-200 rounded-[40px] p-6 shadow-sm border-[3px] ${currentTheme.border} transition-colors duration-500`}>
-              <h2 className="text-xl font-black mb-6 flex items-center gap-2"><Zap className="text-yellow-500" /> What Works for Me?</h2>
+            <div className={`${bgPanel} rounded-[20px] md:rounded-[24px] p-3 md:p-5 shadow-sm border-[3px] ${currentTheme.border} transition-colors duration-500`}>
+              <h2 className={`text-base font-black mb-4 flex items-center gap-1.5 ${textMain}`}><Zap size={18} className="text-yellow-500" /> What Works for Me?</h2>
               {!researchUnlocked ? (
-                <div className="text-center py-12 px-4 border-2 border-dashed border-gray-400 rounded-3xl bg-white">
-                  <p className="text-gray-500 font-bold">Reach {startingScore + 10}% Overall Health to unlock your custom "What Works for Me?" panel!</p>
+                <div className={`text-center py-8 px-4 border-2 border-dashed ${borderLight} rounded-2xl ${bgCard}`}>
+                  <p className={`${textMuted} font-bold text-sm`}>Reach {startingScore + 10}% Overall Health to unlock your custom "What Works for Me?" panel!</p>
                 </div>
               ) : (
-                <div className="space-y-6">
+                <div className="space-y-4">
                   {Object.keys(researchData).map(cat => (
-                    <div key={cat} className={`p-4 rounded-2xl border-2 border-black transition-all ${researchData[cat].approved ? 'bg-emerald-50' : 'bg-white'}`}>
-                      <div className="flex justify-between items-center mb-3">
-                        <h3 className="text-[10px] font-black text-gray-600 uppercase tracking-[0.2em]">{cat}</h3>
-                        {isEffectivelyStaff && <button onClick={() => handleApproveResearch(cat)} className={`p-1.5 rounded-lg transition-colors border-2 border-black ${researchData[cat].approved ? 'bg-[#2D6A4F] text-white hover:bg-[#1B4332]' : 'bg-white text-gray-700 hover:bg-gray-100'}`}><Zap size={14} /></button>}
-                        {!isEffectivelyStaff && researchData[cat].approved && <Sparkles size={14} className="text-[#2D6A4F]" />}
+                    <div key={cat} className={`p-3 rounded-xl border-2 ${borderMain} transition-all ${researchData[cat].approved ? (isDark ? 'bg-emerald-900/40' : 'bg-emerald-50') : bgCard}`}>
+                      <div className="flex justify-between items-center mb-2">
+                        <h3 className={`text-[10px] font-black ${textMuted} uppercase tracking-[0.2em]`}>{cat}</h3>
+                        {isEffectivelyStaff && <button onClick={() => handleApproveResearch(cat)} className={`p-1.5 rounded-lg transition-colors border-2 ${borderMain} ${researchData[cat].approved ? 'bg-[#2D6A4F] text-white hover:bg-[#1B4332]' : `${bgCard} ${textMain} ${hoverCard}`}`}><Zap size={12} /></button>}
+                        {!isEffectivelyStaff && researchData[cat].approved && <Sparkles size={12} className={isDark ? "text-emerald-400" : "text-[#2D6A4F]"} />}
                       </div>
                       {cat !== 'extra' ? (
-                        <select className="w-full p-2 text-sm font-bold rounded-lg bg-gray-50 outline-none border-2 border-black text-gray-800" disabled={isEffectivelyStaff || researchData[cat].approved}>
+                        <select className={`w-full p-2 text-xs font-bold rounded-lg ${bgInput} outline-none border-2 ${borderMain} ${textMain}`} disabled={isEffectivelyStaff || researchData[cat].approved}>
                           <option value="">Pending entry...</option>
                         </select>
                       ) : (
-                        <textarea className="w-full p-3 text-sm font-bold rounded-lg bg-gray-50 outline-none border-2 border-black text-gray-800 h-24" placeholder="Notes..." disabled={isEffectivelyStaff || researchData[cat].approved} />
+                        <textarea className={`w-full p-2 text-xs font-bold rounded-lg ${bgInput} outline-none border-2 ${borderMain} ${textMain} h-16 resize-none`} placeholder="Notes..." disabled={isEffectivelyStaff || researchData[cat].approved} />
                       )}
                     </div>
                   ))}
