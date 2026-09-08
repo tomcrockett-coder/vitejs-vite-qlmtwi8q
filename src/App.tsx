@@ -111,6 +111,7 @@ export default function App() {
   // Dashboard Settings
   const [subjects, setSubjects] = useState(['Social Studies', 'Health', 'Language Arts', 'Math', 'Science', 'Lexia']);
   const [goalText, setGoalText] = useState('NO missing work');
+  const [subjectTrackingMode, setSubjectTrackingMode] = useState('check');
   const [habits, setHabits] = useState(['Sat at my desk', 'No phone during work', '']);
   const [startingScore, setStartingScore] = useState(0);
   const [teacherAdjustment, setTeacherAdjustment] = useState(0);
@@ -122,7 +123,7 @@ export default function App() {
   const [isEditingToday, setIsEditingToday] = useState(false);
   const [isNoneSubjects, setIsNoneSubjects] = useState(false);
   const [isNoneHabits, setIsNoneHabits] = useState(false);
-  const [todayData, setTodayData] = useState({ caughtUpSubjects: [], completedHabits: [], newNote: '' });
+  const [todayData, setTodayData] = useState({ caughtUpSubjects: [], missingAssignments: {}, completedHabits: [], newNote: '' });
   
   const [researchData, setResearchData] = useState({
     location: { value: '', other: '', approved: false },
@@ -264,6 +265,8 @@ export default function App() {
       if (docSnap.exists()) {
         const d = docSnap.data();
         if (d.goalText) setGoalText(d.goalText);
+        if (d.subjectTrackingMode) setSubjectTrackingMode(d.subjectTrackingMode);
+        else setSubjectTrackingMode('check');
         if (d.habits) setHabits(d.habits);
         if (d.subjects) setSubjects(d.subjects);
         if (d.startingScore !== undefined) setStartingScore(d.startingScore);
@@ -289,6 +292,7 @@ export default function App() {
     if (isEditingToday && todaysHistory) {
       setTodayData({
         caughtUpSubjects: todaysHistory.caughtUpSubjects || [],
+        missingAssignments: todaysHistory.missingAssignments || {},
         completedHabits: todaysHistory.completedHabits || [],
         newNote: ''
       });
@@ -307,7 +311,8 @@ export default function App() {
       let totalPossible = 0; let totalEarned = 0;
       history.forEach(day => {
         totalPossible += (day.possibleCount || (activeSubjects.length + activeHabits.length));
-        totalEarned += ((day.caughtUpSubjects?.length || 0) + (day.completedHabits?.length || 0));
+        const subjectEarned = day.caughtUpSubjects?.length ?? Object.values(day.missingAssignments || {}).filter(value => Number(value) === 0).length;
+        totalEarned += (subjectEarned + (day.completedHabits?.length || 0));
       });
       calculated = Math.round((totalEarned / totalPossible) * 100);
     }
@@ -318,12 +323,16 @@ export default function App() {
     const possible = activeSubjects.length + activeHabits.length;
     if (possible === 0) return 0 + teacherDailyAdjustment;
     if (isSubmittedToday && !isEditingToday) {
-      const earned = (todaysHistory?.caughtUpSubjects?.length || 0) + (todaysHistory?.completedHabits?.length || 0);
+      const subjectEarned = todaysHistory?.caughtUpSubjects?.length ?? Object.values(todaysHistory?.missingAssignments || {}).filter(value => Number(value) === 0).length;
+      const earned = subjectEarned + (todaysHistory?.completedHabits?.length || 0);
       return Math.round((earned / (todaysHistory?.possibleCount || possible)) * 100) + teacherDailyAdjustment;
     }
-    const earned = todayData.caughtUpSubjects.length + todayData.completedHabits.length;
+    const liveSubjectEarned = subjectTrackingMode === 'missingCount'
+      ? activeSubjects.filter(sub => Number(todayData.missingAssignments?.[sub] ?? 0) === 0).length
+      : todayData.caughtUpSubjects.length;
+    const earned = liveSubjectEarned + todayData.completedHabits.length;
     return Math.round((earned / possible) * 100) + teacherDailyAdjustment;
-  }, [todayData, activeSubjects.length, activeHabits.length, isSubmittedToday, isEditingToday, todaysHistory, teacherDailyAdjustment]);
+  }, [todayData, subjectTrackingMode, activeSubjects, activeHabits.length, isSubmittedToday, isEditingToday, todaysHistory, teacherDailyAdjustment]);
 
   const researchUnlocked = isEffectivelyStaff || (healthScore >= startingScore + 10);
 
@@ -365,9 +374,15 @@ export default function App() {
       if (history[0].date === yesterday) newStreak = (history[0].streak || 0) + 1;
       else if (history[0].date === todayId) newStreak = history[0].streak || 1;
     }
+    const subjectData = subjectTrackingMode === 'missingCount'
+      ? Object.fromEntries(activeSubjects.map(sub => [sub, Math.max(0, Number(todayData.missingAssignments?.[sub] ?? 0) || 0)]))
+      : (todayData.missingAssignments || {});
+    const caughtUpSubjects = subjectTrackingMode === 'missingCount'
+      ? activeSubjects.filter(sub => Number(subjectData[sub]) === 0)
+      : todayData.caughtUpSubjects;
     const newEntry = {
       id: todayId, date: todayId,
-      caughtUpSubjects: todayData.caughtUpSubjects, completedHabits: todayData.completedHabits,
+      caughtUpSubjects, missingAssignments: subjectData, completedHabits: todayData.completedHabits,
       possibleCount, streak: newStreak, notes: todaysHistory?.notes || []
     };
     if (todayData.newNote.trim()) {
@@ -402,6 +417,7 @@ export default function App() {
       subjects: subjects.filter(s => s.trim() !== ''),
       habits: habits.filter(h => h.trim() !== ''),
       goalText,
+      subjectTrackingMode,
       startingScore: Number(startingScore) || 0,
       teacherAdjustment: Number(teacherAdjustment) || 0,
       teacherDailyAdjustment: Number(teacherDailyAdjustment) || 0
@@ -849,6 +865,14 @@ export default function App() {
 
             <div className="space-y-3 pt-3">
               <h3 className={`font-black text-base ${textMain} border-b-2 ${borderLight} pb-1.5 flex items-center gap-2`}><Activity size={16} className={themeText}/> Tracked Classes</h3>
+              <div className={`p-3 rounded-xl border-2 ${borderMain} ${bgInput}`}>
+                <label className={`block text-[10px] font-black ${textMuted} uppercase tracking-widest mb-2`}>Subject Tracking Method</label>
+                <select className={`w-full p-2.5 text-sm border-2 ${borderMain} rounded-xl font-bold ${textMain} outline-none focus:${currentTheme.border} ${bgCard}`} value={subjectTrackingMode} onChange={e => setSubjectTrackingMode(e.target.value)}>
+                  <option value="check">Check each class with NO missing work</option>
+                  <option value="missingCount">Enter the number of missing assignments</option>
+                </select>
+                <p className={`text-[10px] ${textMuted} mt-2 font-medium`}>Changing this only changes how current and future check-ins are entered. Previously saved history stays intact.</p>
+              </div>
               {subjects.map((sub, i) => (
                 <div key={i} className="flex gap-2">
                   <input className={`flex-1 p-2.5 text-sm ${bgInput} border-2 ${borderMain} rounded-xl font-bold ${textMain} outline-none focus:${currentTheme.border}`} value={sub} onChange={e => { const n = [...subjects]; n[i] = e.target.value; setSubjects(n); }} />
@@ -899,22 +923,52 @@ export default function App() {
                   <div className="space-y-3 animate-in fade-in duration-300">
                     
                     <div className={`${bgCard} border-2 ${borderLight} p-3 rounded-2xl shadow-sm`}>
-                      <p className={`font-bold text-sm ${textMain} mb-2`}>Select classes with <strong className={themeText}>{goalText}</strong>:</p>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
-                        {activeSubjects.map(sub => (
+                      {subjectTrackingMode === 'missingCount' ? (
+                        <>
+                          <p className={`font-bold text-sm ${textMain} mb-2`}>Enter the number of missing assignments in each class:</p>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
+                            {activeSubjects.map(sub => (
+                              <label key={sub} className={`p-2.5 rounded-xl border-2 ${borderMain} ${bgCard} flex items-center justify-between gap-2`}>
+                                <span className={`font-bold text-xs ${textMain}`}>{sub}</span>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  inputMode="numeric"
+                                  className={`w-16 p-1.5 text-center text-sm ${bgInput} border-2 ${borderMain} rounded-lg font-black ${textMain} outline-none focus:${currentTheme.border}`}
+                                  value={todayData.missingAssignments?.[sub] ?? ''}
+                                  placeholder="0"
+                                  onChange={(e) => {
+                                    const raw = e.target.value;
+                                    const value = raw === '' ? '' : Math.max(0, Number(raw));
+                                    setTodayData({...todayData, missingAssignments: {...todayData.missingAssignments, [sub]: value}});
+                                    setIsNoneSubjects(false);
+                                  }}
+                                />
+                              </label>
+                            ))}
+                          </div>
+                          <p className={`text-[10px] ${textMuted} mt-2 font-medium`}>Enter 0 if there is no missing work in that class. Blank fields are treated as 0 when saved.</p>
+                        </>
+                      ) : (
+                        <>
+                          <p className={`font-bold text-sm ${textMain} mb-2`}>Select classes with <strong className={themeText}>{goalText}</strong>:</p>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
+                            {activeSubjects.map(sub => (
+                              <button 
+                                key={sub} 
+                                onClick={() => { const current = todayData.caughtUpSubjects.includes(sub); setTodayData({...todayData, caughtUpSubjects: current ? todayData.caughtUpSubjects.filter(s => s !== sub) : [...todayData.caughtUpSubjects, sub]}); current ? playUnclick() : playClick(); setIsNoneSubjects(false); }} 
+                                className={`p-2.5 rounded-xl border-2 font-bold text-xs transition-all text-left flex items-center gap-2 ${borderMain} ${todayData.caughtUpSubjects.includes(sub) && !isNoneSubjects ? (isDark ? 'bg-emerald-900/40 text-emerald-400 shadow-sm' : 'bg-[#E8F5E9] text-[#1B4332] shadow-sm') : `${bgCard} ${textMain} ${hoverCard}`}`}>
+                                {todayData.caughtUpSubjects.includes(sub) && !isNoneSubjects ? <CheckCircle2 size={18} /> : <Circle size={18} className={textMuted} />} {sub}
+                              </button>
+                            ))}
+                          </div>
                           <button 
-                            key={sub} 
-                            onClick={() => { const current = todayData.caughtUpSubjects.includes(sub); setTodayData({...todayData, caughtUpSubjects: current ? todayData.caughtUpSubjects.filter(s => s !== sub) : [...todayData.caughtUpSubjects, sub]}); current ? playUnclick() : playClick(); setIsNoneSubjects(false); }} 
-                            className={`p-2.5 rounded-xl border-2 font-bold text-xs transition-all text-left flex items-center gap-2 ${borderMain} ${todayData.caughtUpSubjects.includes(sub) && !isNoneSubjects ? (isDark ? 'bg-emerald-900/40 text-emerald-400 shadow-sm' : 'bg-[#E8F5E9] text-[#1B4332] shadow-sm') : `${bgCard} ${textMain} ${hoverCard}`}`}>
-                            {todayData.caughtUpSubjects.includes(sub) && !isNoneSubjects ? <CheckCircle2 size={18} /> : <Circle size={18} className={textMuted} />} {sub}
+                            onClick={() => { const next = !isNoneSubjects; setIsNoneSubjects(next); setTodayData({...todayData, caughtUpSubjects: []}); next ? playClick() : playUnclick(); }} 
+                            className={`mt-2.5 w-full p-2.5 rounded-xl border-2 font-bold text-xs transition-all text-left flex items-center gap-2 ${borderMain} ${isNoneSubjects ? (isDark ? 'bg-emerald-900/40 text-emerald-400 shadow-sm' : 'bg-[#E8F5E9] text-[#1B4332] shadow-sm') : `${bgCard} ${textMuted} ${hoverCard}`}`}>
+                            {isNoneSubjects ? <CheckCircle2 size={18} /> : <Circle size={18} className={textMuted} />} I am not fully caught up in any classes yet.
                           </button>
-                        ))}
-                      </div>
-                      <button 
-                        onClick={() => { const next = !isNoneSubjects; setIsNoneSubjects(next); setTodayData({...todayData, caughtUpSubjects: []}); next ? playClick() : playUnclick(); }} 
-                        className={`mt-2.5 w-full p-2.5 rounded-xl border-2 font-bold text-xs transition-all text-left flex items-center gap-2 ${borderMain} ${isNoneSubjects ? (isDark ? 'bg-emerald-900/40 text-emerald-400 shadow-sm' : 'bg-[#E8F5E9] text-[#1B4332] shadow-sm') : `${bgCard} ${textMuted} ${hoverCard}`}`}>
-                        {isNoneSubjects ? <CheckCircle2 size={18} /> : <Circle size={18} className={textMuted} />} I am not fully caught up in any classes yet.
-                      </button>
+                        </>
+                      )}
                     </div>
 
                     <div className={`${bgCard} border-2 ${borderLight} p-3 rounded-2xl shadow-sm`}>
@@ -940,7 +994,7 @@ export default function App() {
                     <div className={`${bgCard} border-2 ${borderLight} p-3 rounded-2xl shadow-sm`}>
                       <p className={`font-bold text-sm ${textMain} mb-2`}>Do you want to add a comment for your instructor?</p>
                       <textarea 
-                        className={`w-full p-2.5 rounded-xl border-2 ${borderMain} font-bold text-xs ${textMain} outline-none focus:${currentTheme.border} resize-none h-14 ${bgInput}`}
+                        className={`w-full p-2.5 rounded-xl border-2 ${borderMain} font-bold text-xs ${textMain} outline-none focus:${currentTheme.border} resize-y min-h-[4.5rem] leading-normal tracking-normal whitespace-pre-wrap ${bgInput}`}
                         placeholder="Type your message here..."
                         value={todayData.newNote}
                         onChange={(e) => setTodayData({...todayData, newNote: e.target.value})}
