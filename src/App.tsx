@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Activity, CheckCircle2, Circle, Send, Calendar, LogOut, Edit3, Zap, Sparkles, Flame, Shield, Loader2, Eye, EyeOff, Settings, Trash2, Users, Camera, Download, Palette, Moon, Sun, User } from 'lucide-react';
+import { Activity, CheckCircle2, Circle, Send, Calendar, LogOut, Edit3, Zap, Sparkles, Flame, Shield, Loader2, Eye, EyeOff, Settings, Trash2, Users, Camera, Download, Palette, Moon, Sun, User, Home, BookOpen, Sprout, Menu, X } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInWithPopup, signInWithRedirect, GoogleAuthProvider, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, collection, doc, setDoc, getDoc, onSnapshot, getDocs, deleteDoc } from 'firebase/firestore';
@@ -33,7 +33,7 @@ const fetchAudio = async (key, url) => {
 
 fetchAudio('click', 'https://assets.mixkit.co/active_storage/sfx/2568/2568-preview.mp3');
 fetchAudio('unclick', 'https://assets.mixkit.co/active_storage/sfx/2570/2570-preview.mp3');
-fetchAudio('ding', 'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
+fetchAudio('ding', '/sounds/settings-saved.wav');
 fetchAudio('powerup', 'https://assets.mixkit.co/active_storage/sfx/2019/2019-preview.mp3');
 
 const initAudioCtx = () => {
@@ -102,6 +102,7 @@ export default function App() {
   const [fireworksActive, setFireworksActive] = useState(false);
   const [showThemeMenu, setShowThemeMenu] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   // Photo & Theme State
   const [myPhoto, setMyPhoto] = useState(null);
@@ -116,6 +117,7 @@ export default function App() {
   const [startingScore, setStartingScore] = useState(0);
   const [teacherAdjustment, setTeacherAdjustment] = useState(0);
   const [teacherDailyAdjustment, setTeacherDailyAdjustment] = useState(0);
+  const [progressDisplay, setProgressDisplay] = useState('garden');
   
   // Data State
   const [history, setHistory] = useState([]);
@@ -310,6 +312,7 @@ export default function App() {
         if (d.startingScore !== undefined) setStartingScore(d.startingScore);
         if (d.teacherAdjustment !== undefined) setTeacherAdjustment(d.teacherAdjustment);
         if (d.teacherDailyAdjustment !== undefined) setTeacherDailyAdjustment(d.teacherDailyAdjustment);
+        if (d.progressDisplay) setProgressDisplay(d.progressDisplay);
       }
     });
 
@@ -458,7 +461,8 @@ export default function App() {
       subjectTrackingMode,
       startingScore: Number(startingScore) || 0,
       teacherAdjustment: Number(teacherAdjustment) || 0,
-      teacherDailyAdjustment: Number(teacherDailyAdjustment) || 0
+      teacherDailyAdjustment: Number(teacherDailyAdjustment) || 0,
+      progressDisplay
     };
     await setDoc(doc(db, 'users', selectedStudentId, 'settings', 'config'), settingsToSave, { merge: true });
 
@@ -655,6 +659,64 @@ export default function App() {
   const getHealthColor = (s) => s >= 85 ? (isDark ? 'text-emerald-400' : 'text-[#2D6A4F]') : s >= 70 ? 'text-amber-500' : 'text-red-500';
   const getHealthBg = (s) => s >= 85 ? (isDark ? 'bg-emerald-600' : 'bg-[#2D6A4F]') : s >= 70 ? 'bg-amber-500' : 'bg-red-500';
 
+  const scrollToSection = (id) => {
+    setMobileMenuOpen(false);
+    setTimeout(() => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+  };
+
+  const ProgressVisual = () => {
+    const count = Math.max(1, Math.min(history.length, 28));
+    const tiles = Array.from({ length: 28 }, (_, i) => i < count);
+    return (
+      <section id="progress" className={`progress-card ${isDark ? 'progress-card-dark' : ''}`}>
+        <div className="progress-heading">
+          <div>
+            <span className="eyebrow">YOUR PROGRESS</span>
+            <h2>Every step adds to your story.</h2>
+            <p>No resets. No lost progress. Just a growing picture of how you are showing up.</p>
+          </div>
+          <div className="checkin-pill">{history.length} check-in{history.length === 1 ? '' : 's'}</div>
+        </div>
+
+        {progressDisplay === 'garden' && (
+          <div className="garden-scene" aria-label="Progress garden">
+            <div className="garden-sun" />
+            {Array.from({ length: Math.min(count, 12) }, (_, i) => (
+              <div key={i} className={`plant plant-${(i % 4) + 1}`}>
+                <span className="leaf left"/><span className="leaf right"/>{i % 3 === 2 && <span className="flower"/>}
+              </div>
+            ))}
+            <div className="garden-ground" />
+          </div>
+        )}
+
+        {progressDisplay === 'path' && (
+          <div className="path-scene" aria-label="Momentum map">
+            <div className="path-line" />
+            {Array.from({ length: Math.min(count, 10) }, (_, i) => <span key={i} className={`step step-${i + 1}`}>{i + 1}</span>)}
+          </div>
+        )}
+
+        {progressDisplay === 'mosaic' && (
+          <div className="mosaic-scene" aria-label="Weekly mosaic">
+            {tiles.map((filled, i) => <span key={i} className={filled ? `mosaic-tile filled color-${i % 4}` : 'mosaic-tile'} />)}
+          </div>
+        )}
+
+        {progressDisplay === 'rings' && (
+          <div className="rings-scene" aria-label="Growth rings">
+            <div className="ring ring-one"><div className="ring ring-two"><div className="ring ring-three"><Sprout size={30}/></div></div></div>
+            <div className="ring-labels"><span>Showing up</span><span>Trying strategies</span><span>Reflecting</span></div>
+          </div>
+        )}
+
+        {progressDisplay === 'streak' && (
+          <div className="streak-scene"><Flame size={56}/><strong>{currentStreak} day rhythm</strong><span>Your past effort still counts, even when a new rhythm begins.</span></div>
+        )}
+      </section>
+    );
+  };
+
   // --- LOGIN SCREEN ---
   if (!user) {
     return (
@@ -703,7 +765,7 @@ export default function App() {
 
   // --- MAIN DASHBOARD SCREEN ---
   return (
-    <div className={`min-h-screen animated-gradient-bg p-2 md:p-4 font-sans ${textMain} flex flex-col items-center transition-colors duration-500`}>
+    <div className={`min-h-screen animated-gradient-bg p-2 md:p-4 font-sans ${textMain} flex flex-col items-center transition-colors duration-500 equip-app-shell`}>
       
       <style>
         {`
@@ -735,8 +797,24 @@ export default function App() {
         `}
       </style>
 
+      <button className="mobile-nav-toggle" onClick={() => setMobileMenuOpen(!mobileMenuOpen)} aria-label="Open navigation">
+        {mobileMenuOpen ? <X size={21}/> : <Menu size={21}/>}
+      </button>
+      <aside className={`equip-sidebar ${mobileMenuOpen ? 'open' : ''} ${isDark ? 'dark' : ''}`}>
+        <div className="sidebar-brand"><img src="image.png" alt=""/><div><strong>Equip</strong><span>Rural Virtual Academy</span></div></div>
+        <nav>
+          <button onClick={() => scrollToSection('home')}><Home size={18}/><span>Home</span></button>
+          <button onClick={() => scrollToSection('learning')}><BookOpen size={18}/><span>My Learning</span></button>
+          <button onClick={() => scrollToSection('progress')}><Sprout size={18}/><span>Progress</span></button>
+          <button onClick={() => scrollToSection('strategies')}><Zap size={18}/><span>Strategies</span></button>
+          {isStaff && selectedStudentId && <button onClick={() => { setMobileMenuOpen(false); setShowAdminPanel(false); setShowSettings(true); }}><Settings size={18}/><span>Student Setup</span></button>}
+          {userRole === 'admin' && <button onClick={() => { setMobileMenuOpen(false); setShowSettings(false); setShowAdminPanel(true); }}><Shield size={18}/><span>Admin</span></button>}
+        </nav>
+        <div className="sidebar-message"><Sprout size={22}/><strong>Progress builds possibilities.</strong><span>Small steps still count.</span></div>
+      </aside>
+
       {/* TOP NAVIGATION BAR WITH CENTERED HEALTH STATS */}
-      <div className={`w-full max-w-6xl ${bgPanel} rounded-3xl md:rounded-full px-5 md:px-6 py-2.5 md:py-3 shadow-sm border-[3px] ${currentTheme.border} mb-4 flex flex-col lg:flex-row justify-between items-center gap-4 transition-colors duration-500`}>
+      <div id="home" className={`w-full max-w-6xl ${bgPanel} rounded-3xl px-5 md:px-6 py-2.5 md:py-3 shadow-sm border ${borderLight} mb-4 flex flex-col lg:flex-row justify-between items-center gap-4 transition-colors duration-500 equip-topbar`}>
         
         {/* LEFT: Logo Component */}
         <div className="flex justify-center lg:justify-start lg:flex-1 shrink-0 w-full lg:w-auto">
@@ -949,6 +1027,17 @@ export default function App() {
                   <label className={`block text-[10px] font-black ${textMuted} uppercase tracking-widest mb-1.5`}>Goal Text (e.g. "No missing work", "Less than 5 missing")</label>
                   <input type="text" className={`w-full p-2.5 text-sm ${bgInput} border-2 ${borderMain} rounded-xl font-bold ${textMain} outline-none focus:${currentTheme.border}`} value={goalText} onChange={e => setGoalText(e.target.value)} />
                 </div>
+                <div className="md:col-span-2">
+                  <label className={`block text-[10px] font-black ${textMuted} uppercase tracking-widest mb-1.5`}>Progress Visualization</label>
+                  <select className={`w-full p-2.5 text-sm ${bgInput} border-2 ${borderMain} rounded-xl font-bold ${textMain}`} value={progressDisplay} onChange={e => setProgressDisplay(e.target.value)}>
+                    <option value="garden">Progress Garden</option>
+                    <option value="path">Momentum Map</option>
+                    <option value="mosaic">Weekly Mosaic</option>
+                    <option value="rings">Growth Rings</option>
+                    <option value="streak">Traditional Streak</option>
+                  </select>
+                  <p className={`text-[10px] ${textMuted} mt-2 font-medium`}>Garden, map, mosaic, and rings accumulate progress without resetting.</p>
+                </div>
               </div>
             </div>
 
@@ -995,8 +1084,10 @@ export default function App() {
           <p className="text-white/80 text-sm">Select a student from the menu above to start your session.</p>
         </div>
       ) : (
+        <>
+        <ProgressVisual />
         <div className="w-full max-w-6xl grid grid-cols-1 lg:grid-cols-3 gap-3 md:gap-4">
-          <div className="lg:col-span-2 space-y-3 md:space-y-4">
+          <div id="learning" className="lg:col-span-2 space-y-3 md:space-y-4 scroll-mt-4">
 
             {/* Daily Submission Panel */}
             {!isEffectivelyStaff && (
@@ -1148,7 +1239,7 @@ export default function App() {
 
           </div>
 
-          <div className="space-y-4">
+          <div id="strategies" className="space-y-4 scroll-mt-4">
             {/* Research Panel Sidebar */}
             <div className={`${bgPanel} rounded-[20px] md:rounded-[24px] p-3 md:p-5 shadow-sm border-[3px] ${currentTheme.border} transition-colors duration-500`}>
               <h2 className={`text-base font-black mb-4 flex items-center gap-1.5 ${textMain}`}><Zap size={18} className="text-yellow-500" /> What Works for Me?</h2>
@@ -1180,6 +1271,7 @@ export default function App() {
           </div>
 
         </div>
+        </>
       )}
     </div>
   );
