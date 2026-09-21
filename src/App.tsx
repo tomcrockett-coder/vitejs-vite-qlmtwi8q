@@ -134,6 +134,7 @@ export default function App() {
 
   // Admin User Management State
   const [allowedUsersList, setAllowedUsersList] = useState([]);
+  const [newAllowedName, setNewAllowedName] = useState('');
   const [newAllowedEmail, setNewAllowedEmail] = useState('');
   const [newAllowedRole, setNewAllowedRole] = useState('student');
 
@@ -152,6 +153,33 @@ export default function App() {
   const borderLight = isDark ? 'border-slate-700' : 'border-gray-200';
   const hoverCard = isDark ? 'hover:bg-slate-800' : 'hover:bg-gray-50';
   const themeText = isDark ? currentTheme.textDark : currentTheme.text;
+
+  // Copy an admin-created student's setup to their real Firebase Auth UID the
+  // first time they sign in. The setup is also stored on their authorization
+  // record so the student never needs permission to read another user's path.
+  async function claimPendingStudentProfile(currentUser, allowedData) {
+    const pendingProfileId = allowedData?.profileId;
+    if (!pendingProfileId || pendingProfileId === currentUser.uid) return;
+
+    const realUserRef = doc(db, 'users', currentUser.uid);
+    const realUserSnap = await getDoc(realUserRef);
+    if (realUserSnap.exists()) return;
+
+    await setDoc(realUserRef, {
+      name: allowedData.name || currentUser.displayName || currentUser.email,
+      email: currentUser.email,
+      role: allowedData.role || 'student',
+      pending: false
+    }, { merge: true });
+
+    if (allowedData.initialSettings) {
+      await setDoc(
+        doc(db, 'users', currentUser.uid, 'settings', 'config'),
+        allowedData.initialSettings,
+        { merge: true }
+      );
+    }
+  }
 
   // --- AUTHENTICATION & SYNC LOGIC ---
   useEffect(() => {
@@ -173,12 +201,17 @@ export default function App() {
           const allowedDoc = await getDoc(allowedDocRef);
           
           if (allowedDoc.exists()) {
-            const role = allowedDoc.data().role || 'student';
+            const allowedData = allowedDoc.data();
+            const role = allowedData.role || 'student';
             setUserRole(role);
             setUser(currentUser);
+
+            if (role === 'student') {
+              await claimPendingStudentProfile(currentUser, allowedData);
+            }
             
             await setDoc(doc(db, 'users', currentUser.uid), {
-              name: currentUser.displayName || currentUser.email,
+              name: role === 'student' ? (allowedData.name || currentUser.displayName || currentUser.email) : (currentUser.displayName || currentUser.email),
               email: currentUser.email,
               role: role
             }, { merge: true });
@@ -212,7 +245,7 @@ export default function App() {
   const loadTeacherData = async (currentUser) => {
     try {
       const usersSnap = await getDocs(collection(db, 'users'));
-      const fetchedStudents = [];
+      const studentsByEmail = new Map();
       
       usersSnap.forEach(d => {
         const data = d.data();
@@ -220,15 +253,20 @@ export default function App() {
         const adminEmailStr = ADMIN_EMAIL.toLowerCase();
         
         if (data.role === 'student' || (!data.role && userEmail && userEmail !== adminEmailStr)) {
-          fetchedStudents.push({ 
+          const student = { 
             id: d.id, 
             name: data.name || data.email || 'Unnamed Student',
             ...data 
-          });
+          };
+          const key = userEmail || d.id;
+          const existing = studentsByEmail.get(key);
+          if (!existing || (existing.pending && !student.pending)) {
+            studentsByEmail.set(key, student);
+          }
         }
       });
       
-      setStudentsList(fetchedStudents);
+      setStudentsList(Array.from(studentsByEmail.values()));
     } catch (error) {
       console.error("Error loading students list:", error);
     }
@@ -413,7 +451,7 @@ export default function App() {
 
   const saveSettings = async () => {
     if (!selectedStudentId) return;
-    await setDoc(doc(db, 'users', selectedStudentId, 'settings', 'config'), {
+    const settingsToSave = {
       subjects: subjects.filter(s => s.trim() !== ''),
       habits: habits.filter(h => h.trim() !== ''),
       goalText,
@@ -421,19 +459,68 @@ export default function App() {
       startingScore: Number(startingScore) || 0,
       teacherAdjustment: Number(teacherAdjustment) || 0,
       teacherDailyAdjustment: Number(teacherDailyAdjustment) || 0
-    }, { merge: true });
+    };
+    await setDoc(doc(db, 'users', selectedStudentId, 'settings', 'config'), settingsToSave, { merge: true });
+
+    const selectedStudent = studentsList.find(s => s.id === selectedStudentId);
+    if (selectedStudent?.pending && selectedStudent.email) {
+      await setDoc(doc(db, 'allowed_users', selectedStudent.email.toLowerCase()), {
+        initialSettings: settingsToSave
+      }, { merge: true });
+    }
     playDing();
     setShowSettings(false);
   };
 
   const handleAddAllowedUser = async () => {
     if (!newAllowedEmail.trim()) return;
-    await setDoc(doc(db, 'allowed_users', newAllowedEmail.toLowerCase().trim()), {
+    const email = newAllowedEmail.toLowerCase().trim();
+    const displayName = newAllowedName.trim() || email.split('@')[0];
+    let profileId = null;
+    let initialSettings = null;
+
+    if (newAllowedRole === 'student') {
+      const existingStudent = studentsList.find(s => s.email?.toLowerCase() === email);
+      profileId = existingStudent?.id || doc(collection(db, 'users')).id;
+
+      await setDoc(doc(db, 'users', profileId), {
+        name: displayName,
+        email,
+        role: 'student',
+        pending: !existingStudent,
+        createdAt: new Date().toISOString()
+      }, { merge: true });
+
+      if (!existingStudent) {
+        initialSettings = {
+          subjects: ['Social Studies', 'Health', 'Language Arts', 'Math', 'Science', 'Lexia'],
+          habits: ['Sat at my desk', 'No phone during work'],
+          goalText: 'NO missing work',
+          subjectTrackingMode: 'check',
+          startingScore: 0,
+          teacherAdjustment: 0,
+          teacherDailyAdjustment: 0
+        };
+        await setDoc(doc(db, 'users', profileId, 'settings', 'config'), initialSettings, { merge: true });
+      }
+    }
+
+    await setDoc(doc(db, 'allowed_users', email), {
       role: newAllowedRole,
+      name: displayName,
+      ...(profileId ? { profileId } : {}),
+      ...(initialSettings ? { initialSettings } : {}),
       addedAt: new Date().toISOString()
-    });
+    }, { merge: true });
+    setNewAllowedName('');
     setNewAllowedEmail('');
-    fetchAllowedUsers();
+    await Promise.all([fetchAllowedUsers(), loadTeacherData(user)]);
+
+    if (profileId) {
+      setSelectedStudentId(profileId);
+      setShowAdminPanel(false);
+      setShowSettings(true);
+    }
   };
 
   const handleDeleteAllowedUser = async (email) => {
@@ -493,7 +580,7 @@ export default function App() {
   const exportToCSV = (data, fileName) => {
     if (!data || data.length === 0) return;
     const headers = ["Date", "Overall Score (%)", "Streak", "Possible Items", "Subjects Caught Up", "Habits Completed", "Notes/Comments"];
-    const rows = data.map(day => {
+    const rows = data.slice(0, 200).map(day => {
       const score = Math.round(((day.caughtUpSubjects?.length || 0) + (day.completedHabits?.length || 0)) / (day.possibleCount || 1) * 100);
       const classes = (day.caughtUpSubjects || []).join("; ");
       const habits = (day.completedHabits || []).join("; ");
@@ -790,7 +877,8 @@ export default function App() {
               </button>
             </div>
             
-            <div className="flex flex-col md:flex-row gap-2.5">
+            <div className="grid grid-cols-1 md:grid-cols-[1fr_1.4fr_auto_auto] gap-2.5">
+              <input type="text" placeholder="Student Name..." className={`p-2.5 text-sm border-2 ${borderMain} rounded-xl font-bold ${textMain} outline-none focus:${currentTheme.border} ${bgInput}`} value={newAllowedName} onChange={e => setNewAllowedName(e.target.value)} />
               <input type="email" placeholder="Google Email Address..." className={`flex-1 p-2.5 text-sm border-2 ${borderMain} rounded-xl font-bold ${textMain} outline-none focus:${currentTheme.border} ${bgInput}`} value={newAllowedEmail} onChange={e => setNewAllowedEmail(e.target.value)} />
               <select className={`p-2.5 text-sm border-2 ${borderMain} rounded-xl font-bold ${textMain} outline-none focus:${currentTheme.border} ${bgInput}`} value={newAllowedRole} onChange={e => setNewAllowedRole(e.target.value)}>
                 <option value="student">Student</option>
@@ -804,7 +892,8 @@ export default function App() {
               {allowedUsersList.map(u => (
                 <div key={u.email} className={`flex justify-between items-center p-3 border-2 ${borderMain} rounded-xl ${bgInput} ${hoverCard} transition-colors`}>
                   <div>
-                    <div className={`font-bold text-sm ${textMain}`}>{u.email}</div>
+                    <div className={`font-bold text-sm ${textMain}`}>{u.name || u.email}</div>
+                    {u.name && <div className={`text-[10px] font-bold ${textMuted}`}>{u.email}</div>}
                     <div className={`text-[10px] font-black uppercase tracking-widest mt-0.5 ${themeText}`}>{u.role}</div>
                   </div>
                   {u.email.toLowerCase() !== ADMIN_EMAIL.toLowerCase() && (
